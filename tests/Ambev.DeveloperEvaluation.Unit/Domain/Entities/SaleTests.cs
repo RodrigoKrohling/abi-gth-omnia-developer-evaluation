@@ -279,6 +279,103 @@ public class SaleTests
         sale.DomainEvents.Should().BeEmpty();
     }
 
+    [Fact(DisplayName = "Updating should keep the identity of an item whose product is unchanged")]
+    public void Given_DraftForExistingProduct_When_Updating_Then_ItemKeepsItsId()
+    {
+        // Items are reconciled by product rather than rebuilt, so an item id a client
+        // already holds from the cancel endpoint stays valid across an update.
+        var sale = SaleTestData.GenerateSaleWithoutItems();
+        var product = SaleTestData.GenerateProduct();
+        var original = sale.AddItem(product, 2, 100.00m);
+        sale.ClearDomainEvents();
+
+        sale.Update(
+            sale.SaleDate, sale.Customer, sale.Branch,
+            [new Ambev.DeveloperEvaluation.Domain.ValueObjects.SaleItemDraft(product, 10, 100.00m)]);
+
+        var item = sale.Items.Should().ContainSingle().Subject;
+        item.Id.Should().Be(original.Id);
+        item.Quantity.Should().Be(10);
+        item.DiscountRate.Should().Be(0.20m);
+    }
+
+    [Fact(DisplayName = "Updating should remove active items no draft mentions")]
+    public void Given_DraftsOmittingAProduct_When_Updating_Then_RemovesThatItem()
+    {
+        var sale = SaleTestData.GenerateSaleWithoutItems();
+        var kept = SaleTestData.GenerateProduct();
+        var dropped = SaleTestData.GenerateProduct();
+        sale.AddItem(kept, 2, 10.00m);
+        sale.AddItem(dropped, 3, 10.00m);
+        sale.ClearDomainEvents();
+
+        sale.Update(
+            sale.SaleDate, sale.Customer, sale.Branch,
+            [new Ambev.DeveloperEvaluation.Domain.ValueObjects.SaleItemDraft(kept, 2, 10.00m)]);
+
+        // PUT carries the whole sale, so a product left out of the request is no
+        // longer part of it.
+        sale.Items.Should().ContainSingle();
+        sale.Items.Single().Product.Id.Should().Be(kept.Id);
+    }
+
+    [Fact(DisplayName = "Updating should preserve cancelled items")]
+    public void Given_CancelledItem_When_Updating_Then_ItIsPreserved()
+    {
+        var sale = SaleTestData.GenerateSaleWithoutItems();
+        var cancelledProduct = SaleTestData.GenerateProduct();
+        var activeProduct = SaleTestData.GenerateProduct();
+        var toCancel = sale.AddItem(cancelledProduct, 2, 10.00m);
+        sale.AddItem(activeProduct, 3, 10.00m);
+        sale.CancelItem(toCancel.Id);
+        sale.ClearDomainEvents();
+
+        sale.Update(
+            sale.SaleDate, sale.Customer, sale.Branch,
+            [new Ambev.DeveloperEvaluation.Domain.ValueObjects.SaleItemDraft(activeProduct, 5, 10.00m)]);
+
+        // A cancelled line is historical record and is not swept away by a later
+        // update, even though no draft mentions it.
+        sale.Items.Should().HaveCount(2);
+        sale.Items.Single(i => i.Id == toCancel.Id).IsCancelled.Should().BeTrue();
+    }
+
+    [Fact(DisplayName = "Updating with a draft for a cancelled item's product should be rejected")]
+    public void Given_DraftForCancelledProduct_When_Updating_Then_ThrowsDomainException()
+    {
+        var sale = SaleTestData.GenerateSaleWithoutItems();
+        var product = SaleTestData.GenerateProduct();
+        var item = sale.AddItem(product, 2, 10.00m);
+        sale.CancelItem(item.Id);
+        sale.ClearDomainEvents();
+
+        var act = () => sale.Update(
+            sale.SaleDate, sale.Customer, sale.Branch,
+            [new Ambev.DeveloperEvaluation.Domain.ValueObjects.SaleItemDraft(product, 5, 10.00m)]);
+
+        // Refused rather than silently reviving the cancelled line.
+        act.Should().Throw<DomainException>().WithMessage("*was cancelled*");
+    }
+
+    [Fact(DisplayName = "Updating should refresh a changed product title")]
+    public void Given_NewTitleForSameProduct_When_Updating_Then_RefreshesTitle()
+    {
+        var sale = SaleTestData.GenerateSaleWithoutItems();
+        var product = SaleTestData.GenerateProduct();
+        sale.AddItem(product, 2, 10.00m);
+        sale.ClearDomainEvents();
+
+        var renamed = new Ambev.DeveloperEvaluation.Domain.ValueObjects.ProductReference(
+            product.Id, "Renamed Product");
+
+        sale.Update(
+            sale.SaleDate, sale.Customer, sale.Branch,
+            [new Ambev.DeveloperEvaluation.Domain.ValueObjects.SaleItemDraft(renamed, 2, 10.00m)]);
+
+        sale.Items.Single().Product.Title.Should().Be("Renamed Product");
+        sale.Items.Single().Product.Id.Should().Be(product.Id);
+    }
+
     // -- Cancelling a sale ----------------------------------------------------
 
     [Fact(DisplayName = "Cancelling a sale should zero its total and raise SaleCancelled")]

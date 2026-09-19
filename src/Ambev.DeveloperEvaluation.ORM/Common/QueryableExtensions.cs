@@ -43,8 +43,32 @@ public static class QueryableExtensions
     /// query untouched.
     /// </param>
     /// <returns>The ordered query.</returns>
-    public static IQueryable<T> ApplyOrdering<T>(this IQueryable<T> source, string? order)
+    public static IQueryable<T> ApplyOrdering<T>(this IQueryable<T> source, string? order) =>
+        source.ApplyOrdering(order, out _);
+
+    /// <summary>
+    /// Applies an ordering clause and reports whether any term actually resolved.
+    /// </summary>
+    /// <typeparam name="T">The element type being ordered.</typeparam>
+    /// <param name="source">The query to order.</param>
+    /// <param name="order">Comma-separated <c>field [asc|desc]</c> terms.</param>
+    /// <param name="wasOrdered">
+    /// Set to <c>true</c> when at least one term resolved to a real property, which
+    /// means the returned query can safely be cast to <see cref="IOrderedQueryable{T}"/>
+    /// to append a tiebreaker with <c>ThenBy</c>.
+    /// </param>
+    /// <returns>The ordered query.</returns>
+    /// <remarks>
+    /// The flag exists because a caller cannot determine this by type-testing the
+    /// result. EF Core's internal query implementations satisfy
+    /// <see cref="IOrderedQueryable{T}"/> whether or not an ordering has been applied,
+    /// so <c>is IOrderedQueryable&lt;T&gt;</c> would report true for an unordered query
+    /// and a following <c>ThenBy</c> would throw at translation time.
+    /// </remarks>
+    public static IQueryable<T> ApplyOrdering<T>(this IQueryable<T> source, string? order, out bool wasOrdered)
     {
+        wasOrdered = false;
+
         if (string.IsNullOrWhiteSpace(order))
             return source;
 
@@ -89,6 +113,7 @@ public static class QueryableExtensions
                     Expression.Quote(selector)));
 
             isFirstTerm = false;
+            wasOrdered = true;
         }
 
         return source;

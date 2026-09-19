@@ -159,7 +159,7 @@ public class Sale : AggregateRoot
         {
             Id = Guid.NewGuid(),
             SaleNumber = saleNumber.Trim(),
-            SaleDate = saleDate,
+            SaleDate = NormalizeToUtc(saleDate),
             Customer = customer,
             Branch = branch,
             TotalAmount = 0m,
@@ -245,9 +245,26 @@ public class Sale : AggregateRoot
     /// <remarks>
     /// <para>
     /// Models the PUT semantics of the API: the request carries the whole sale, so
-    /// the item list is replaced rather than merged. Building the replacement into a
-    /// temporary list first means a failure partway through leaves the sale exactly
-    /// as it was, instead of half updated.
+    /// the resulting item set is exactly the one described by
+    /// <paramref name="items"/>.
+    /// </para>
+    /// <para>
+    /// <b>Items are reconciled, not rebuilt.</b> A draft naming a product the sale
+    /// already holds updates that item in place; a product not yet present is added;
+    /// an active item no product names is removed. The obvious alternative - discard
+    /// every item and create replacements - would give each surviving line a new
+    /// identity on every update, which breaks any client holding an item id from
+    /// <c>PATCH /api/sales/{id}/items/{itemId}/cancel</c>. It also churns the
+    /// database, deleting and reinserting rows whose values did not change.
+    /// </para>
+    /// <para>
+    /// <b>Cancelled items are preserved.</b> They are historical record, so they are
+    /// neither updated nor removed, and a draft naming a cancelled item's product is
+    /// refused rather than silently reviving the line.
+    /// </para>
+    /// <para>
+    /// Everything is validated before anything is mutated, so a rejected draft leaves
+    /// the sale exactly as it was rather than half updated.
     /// </para>
     /// <para>
     /// Raises a single <see cref="SaleModifiedEvent"/>, because one request is one
@@ -273,8 +290,10 @@ public class Sale : AggregateRoot
         if (drafts.Count == 0)
             throw new DomainException("A sale must have at least one item.");
 
-        // Catch a duplicated product before building anything, so the error names the
-        // real problem rather than surfacing as a confusing second failure.
+        // -- Validate everything up front ------------------------------------
+        // Nothing below this block mutates, so any rejection here leaves the sale
+        // untouched.
+
         var duplicate = drafts
             .GroupBy(d => d.Product.Id)
             .FirstOrDefault(g => g.Count() > 1);
@@ -284,18 +303,58 @@ public class Sale : AggregateRoot
                 $"The product '{duplicate.First().Product.Title}' appears more than once. " +
                 "Combine the quantities into a single item.");
 
-        // Build into a scratch list first: if any draft is rejected, the sale has not
-        // been touched yet and the caller sees the original state.
-        var replacements = drafts
-            .Select(d => SaleItem.Create(d.Product, d.Quantity, d.UnitPrice, policy))
-            .ToList();
+        foreach (var draft in drafts)
+        {
+            // Throws for a quantity outside the sellable range.
+            policy.GetDiscountRate(draft.Quantity);
 
-        SaleDate = saleDate;
+            if (draft.UnitPrice < 0)
+                throw new DomainException(
+                    $"The unit price cannot be negative, but was {draft.UnitPrice}.");
+
+            var cancelledMatch = _items.FirstOrDefault(
+                i => i.Product.Id == draft.Product.Id && i.IsCancelled);
+
+            if (cancelledMatch is not null)
+                throw new DomainException(
+                    $"The item for product '{draft.Product.Title}' was cancelled and cannot be changed.");
+        }
+
+        // -- Apply -------------------------------------------------------------
+
+        SaleDate = NormalizeToUtc(saleDate);
         Customer = customer;
         Branch = branch;
 
-        _items.Clear();
-        _items.AddRange(replacements);
+        foreach (var draft in drafts)
+        {
+            var existing = _items.FirstOrDefault(i => i.Product.Id == draft.Product.Id && !i.IsCancelled);
+
+            if (existing is null)
+            {
+                _items.Add(SaleItem.Create(draft.Product, draft.Quantity, draft.UnitPrice, policy));
+                continue;
+            }
+
+            existing.SetQuantityAndPrice(draft.Quantity, draft.UnitPrice, policy);
+
+            // Refresh the denormalized title if the caller supplied a newer one. A
+            // brand new reference instance is assigned rather than the draft's own
+            // object being reused across items, because an owned entity is keyed by
+            // its owner and cannot be moved between them.
+            if (!string.Equals(existing.Product.Title, draft.Product.Title, StringComparison.Ordinal))
+                existing.SetProductTitle(draft.Product.Title);
+        }
+
+        // Active items no draft mentions are no longer part of the sale.
+        var draftProductIds = drafts.Select(d => d.Product.Id).ToHashSet();
+
+        var removed = _items
+            .Where(i => !i.IsCancelled && !draftProductIds.Contains(i.Product.Id))
+            .ToList();
+
+        foreach (var item in removed)
+            _items.Remove(item);
 
         UpdatedAt = DateTime.UtcNow;
         Recalculate();
@@ -398,6 +457,33 @@ public class Sale : AggregateRoot
         TotalAmount = _items
             .Where(i => !i.IsCancelled)
             .Sum(i => i.TotalAmount);
+
+    /// <summary>
+    /// Converts a caller-supplied sale date to UTC.
+    /// </summary>
+    /// <param name="value">The date as it was supplied.</param>
+    /// <returns>The same instant expressed in UTC.</returns>
+    /// <remarks>
+    /// Sale dates are stored in UTC, so that sales made in different branches remain
+    /// comparable and orderable regardless of where the request came from.
+    ///
+    /// This also keeps the column type honest. The dates are persisted to PostgreSQL
+    /// as <c>timestamp with time zone</c>, and Npgsql refuses to write a
+    /// <see cref="DateTime"/> whose <see cref="DateTime.Kind"/> is
+    /// <see cref="DateTimeKind.Local"/> or <see cref="DateTimeKind.Unspecified"/> to
+    /// that type. A date deserialized from JSON without an offset arrives as
+    /// Unspecified, so without this every create would fail at save time.
+    ///
+    /// An Unspecified date is read as already being UTC rather than as local time,
+    /// which is the usual reading for an API that documents its timestamps as UTC and
+    /// avoids the value shifting according to the server's own time zone.
+    /// </remarks>
+    private static DateTime NormalizeToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
 
     /// <summary>
     /// Guards operations that a cancelled sale must refuse.

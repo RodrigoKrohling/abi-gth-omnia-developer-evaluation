@@ -182,6 +182,29 @@ public class SaleItem : BaseEntity
     }
 
     /// <summary>
+    /// Refreshes the denormalized product title, keeping the same product id.
+    /// </summary>
+    /// <param name="title">The title as the caller most recently knows it.</param>
+    /// <exception cref="DomainException">Thrown when the item is cancelled.</exception>
+    /// <remarks>
+    /// Used when an update supplies a newer title for a product the sale already
+    /// holds. A fresh <see cref="ProductReference"/> is constructed rather than the
+    /// caller's instance being stored, because an owned entity is keyed by its owner
+    /// and reusing one that another item already owns would make the persistence
+    /// layer try to move it between parents.
+    ///
+    /// Only the description is refreshed; the identifier never changes, since a
+    /// different product is a different item.
+    /// </remarks>
+    internal void SetProductTitle(string title)
+    {
+        if (IsCancelled)
+            throw new DomainException("A cancelled sale item cannot be changed.");
+
+        Product = new ProductReference(Product.Id, title);
+    }
+
+    /// <summary>
     /// Cancels this item.
     /// </summary>
     /// <exception cref="DomainException">Thrown when the item is already cancelled.</exception>

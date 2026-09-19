@@ -1,0 +1,101 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # The API itself.
+  # ---------------------------------------------------------------------------
+  ambev.developerevaluation.webapi:
+    container_name: ambev_developer_evaluation_webapi
+    image: ${DOCKER_REGISTRY-}ambevdeveloperevaluationwebapi
+    build:
+      context: .
+      dockerfile: src/Ambev.DeveloperEvaluation.WebApi/Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      # Overrides the connection string in appsettings.json. That file targets
+      # "localhost" so a local `dotnet run` can reach the published port; inside
+      # the compose network the database is reached by its service name instead.
+      # The double underscore is the .NET configuration convention for nesting:
+      - ConnectionStrings__DefaultConnection=Host=ambev.developerevaluation.database;Port=5432;Database=developer_evaluation;Username=developer;Password=ev@luAt10n
+      - ConnectionStrings__Redis=ambev.developerevaluation.cache:6379,password=ev@luAt10n
+      # The MongoDB audit trail is off by default in appsettings.json so the API can
+      # run without it. Inside compose the container is there, so it is switched on.
+      # The @ in the password is percent-encoded because the value is a URI.
+      - Mongo__Enabled=true
+      - Mongo__ConnectionString=mongodb://developer:ev%40luAt10n@ambev.developerevaluation.nosql:27017/?authSource=admin
+      # Redis read cache, likewise off by default and switched on inside compose.
+      - Cache__Enabled=true
+      - Cache__ConnectionString=ambev.developerevaluation.cache:6379,password=ev@luAt10n
+    ports:
+      # Explicit host:container mapping. The template declared only "8080", which
+      # asks Docker for a *random* host port, so the documented
+      # http://localhost:8080/swagger address would not work.
+      - "8080:8080"
+    depends_on:
+      # Wait for the database to answer a real health check, not merely to start.
+      # Without this the API can boot first, fail to apply migrations, and exit.
+      ambev.developerevaluation.database:
+        condition: service_healthy
+      # Started, not healthy: the audit store is optional and the API degrades
+      # gracefully without it, so waiting on it would delay startup for nothing.
+      ambev.developerevaluation.nosql:
+        condition: service_started
+      # Also optional: reads fall through to the database when the cache is down.
+      ambev.developerevaluation.cache:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL - the transactional store for the Sale aggregate.
+  # ---------------------------------------------------------------------------
+  ambev.developerevaluation.database:
+    container_name: ambev_developer_evaluation_database
+    image: postgres:13
+    environment:
+      POSTGRES_DB: developer_evaluation
+      POSTGRES_USER: developer
+      POSTGRES_PASSWORD: ev@luAt10n
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume so the schema and data survive `docker compose down`.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U developer -d developer_evaluation"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MongoDB - append-only audit trail of published domain events.
+  # ---------------------------------------------------------------------------
+  ambev.developerevaluation.nosql:
+    container_name: ambev_developer_evaluation_nosql
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: developer
+      MONGO_INITDB_ROOT_PASSWORD: ev@luAt10n
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis - read-through cache for sale lookups.
+  # ---------------------------------------------------------------------------
+  ambev.developerevaluation.cache:
+    container_name: ambev_developer_evaluation_cache
+    image: redis:7.4.1-alpine
+    command: redis-server --requirepass ev@luAt10n
+    # The template set MONGO_INITDB_* variables on this service. They were copied
+    # from the Mongo service by mistake and mean nothing to Redis; the password is
+    # supplied through --requirepass above.
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongo_data:

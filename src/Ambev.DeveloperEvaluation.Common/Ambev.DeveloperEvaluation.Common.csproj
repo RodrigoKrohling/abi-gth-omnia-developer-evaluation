@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.10" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.10" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+		<PackageReference Include="FluentValidation" Version="11.10.0" />
+		<PackageReference Include="MediatR" Version="12.4.1" />
+		<PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+		<PackageReference Include="Serilog.Exceptions" Version="8.4.0" />
+		<PackageReference Include="Serilog.Exceptions.EntityFrameworkCore" Version="8.4.0" />
+		<PackageReference Include="Serilog.Expressions" Version="5.0.0" />
+		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+		<PackageReference Include="Serilog.Enrichers.ExceptionData" Version="1.0.0" />
+		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+	</ItemGroup>
+
+	<!--
+		Serilog.Exceptions.EntityFrameworkCore 8.4.0 depends on EF Core 6.0.0, which
+		transitively drags in Microsoft.Extensions.Caching.Memory 6.0.0 - a version
+		carrying a high severity advisory (GHSA-qj66-m88j-hmgj).
+
+		Referencing the package directly at 8.0.x promotes it to a top-level
+		dependency, so NuGet resolves the patched version instead of the transitive
+		one. This is the whole point of the reference; nothing in this project uses
+		the memory cache API.
+	-->
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+	</ItemGroup>
+
+</Project>

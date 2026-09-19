@@ -1,0 +1,277 @@
+### DeveloperStore Sales API
+###
+### Run the requests in order. The four discount cases below are the acceptance
+### criteria from the brief: 3 items earn nothing, 5 earn 10%, 15 earn 20%, and 21
+### are refused outright.
+###
+### Local `dotnet run` uses port 7181 (https) / 5119 (http); docker compose uses 8080.
+
+@host = https://localhost:7181
+# @host = http://localhost:8080
+
+@customerId = 3fa85f64-5717-4562-b3fc-2c963f66afa6
+@branchId = 7c9e6679-7425-40de-944b-e07fc1f90ae7
+@productId = 550e8400-e29b-41d4-a716-446655440000
+@otherProductId = 550e8400-e29b-41d4-a716-446655440001
+
+###############################################################################
+### Health
+###############################################################################
+
+GET {{host}}/health
+Accept: application/json
+
+###############################################################################
+### Discount rule 1 — below 4 items: no discount
+### Expect 201, discount 0, totalAmount 300.00
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000001",
+  "saleDate": "2024-06-01T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "productTitle": "Fjallraven Foldsack No. 1 Backpack",
+      "quantity": 3,
+      "unitPrice": 100.00
+    }
+  ]
+}
+
+###############################################################################
+### Discount rule 2 — 4 or more items: 10%
+### Expect 201, discountRate 0.10, discount 50.00, totalAmount 450.00
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000002",
+  "saleDate": "2024-06-02T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "productTitle": "Fjallraven Foldsack No. 1 Backpack",
+      "quantity": 5,
+      "unitPrice": 100.00
+    }
+  ]
+}
+
+###############################################################################
+### Discount rule 3 — 10 to 20 items: 20%
+### Expect 201, discountRate 0.20, discount 300.00, totalAmount 1200.00
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000003",
+  "saleDate": "2024-06-03T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Joao Souza",
+  "branchId": "{{branchId}}",
+  "branchName": "Uptown",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "productTitle": "Fjallraven Foldsack No. 1 Backpack",
+      "quantity": 15,
+      "unitPrice": 100.00
+    }
+  ]
+}
+
+###############################################################################
+### Discount rule 4 — above 20 identical items: refused
+### Expect 400 with { "type": "ValidationError" | "BusinessRuleViolation", ... }
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000004",
+  "saleDate": "2024-06-04T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "productTitle": "Fjallraven Foldsack No. 1 Backpack",
+      "quantity": 21,
+      "unitPrice": 100.00
+    }
+  ]
+}
+
+###############################################################################
+### The tier boundary is at exactly 4
+### The brief's prose says "above 4" but its tier list says "4+"; the tier list
+### wins. Expect 201 with discountRate 0.10, not 0.
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000005",
+  "saleDate": "2024-06-05T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "productTitle": "Fjallraven Foldsack No. 1 Backpack",
+      "quantity": 4,
+      "unitPrice": 100.00
+    }
+  ]
+}
+
+###############################################################################
+### A product may appear only once per sale
+### Expect 400: two lines of 20 would sell 40 units of one product.
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000006",
+  "saleDate": "2024-06-06T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    { "productId": "{{productId}}", "productTitle": "Backpack", "quantity": 20, "unitPrice": 10.00 },
+    { "productId": "{{productId}}", "productTitle": "Backpack", "quantity": 20, "unitPrice": 10.00 }
+  ]
+}
+
+###############################################################################
+### A duplicate sale number
+### Expect 409 with { "type": "ResourceConflict", ... }
+###############################################################################
+
+POST {{host}}/api/sales
+Content-Type: application/json
+
+{
+  "saleNumber": "SALE-000001",
+  "saleDate": "2024-06-07T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva",
+  "branchId": "{{branchId}}",
+  "branchName": "Downtown",
+  "items": [
+    { "productId": "{{productId}}", "productTitle": "Backpack", "quantity": 1, "unitPrice": 10.00 }
+  ]
+}
+
+###############################################################################
+### Listing: paging, ordering and filtering
+###############################################################################
+
+GET {{host}}/api/sales?_page=1&_size=10
+Accept: application/json
+
+###
+
+GET {{host}}/api/sales?_order=saleDate desc, saleNumber asc
+Accept: application/json
+
+###
+### Dotted paths reach into the External Identity value objects.
+GET {{host}}/api/sales?branch.name=Downtown&isCancelled=false
+Accept: application/json
+
+###
+### A trailing asterisk is a starts-with match, case-insensitive.
+GET {{host}}/api/sales?customer.name=Maria*
+Accept: application/json
+
+###
+### Inclusive bounds on a date field.
+GET {{host}}/api/sales?_minSaleDate=2024-06-01&_maxSaleDate=2024-06-30
+Accept: application/json
+
+###
+### Inclusive bounds on a numeric field.
+GET {{host}}/api/sales?_minTotalAmount=400&_maxTotalAmount=1300
+Accept: application/json
+
+###############################################################################
+### Single sale, update, cancel, delete
+###
+### Replace {{saleId}} and {{saleItemId}} with values from a response above.
+###############################################################################
+
+@saleId = 00000000-0000-0000-0000-000000000000
+@saleItemId = 00000000-0000-0000-0000-000000000000
+
+###
+GET {{host}}/api/sales/{{saleId}}
+Accept: application/json
+
+###
+### Expect 404 with { "type": "ResourceNotFound", ... }
+GET {{host}}/api/sales/11111111-1111-1111-1111-111111111111
+Accept: application/json
+
+###
+### PUT replaces the whole sale. Keeping the same productId updates that line in
+### place and preserves its item id; adding a new productId appends a line.
+### Note there is no saleNumber: an update cannot change it.
+PUT {{host}}/api/sales/{{saleId}}
+Content-Type: application/json
+
+{
+  "saleDate": "2024-07-01T00:00:00Z",
+  "customerId": "{{customerId}}",
+  "customerName": "Maria Silva Santos",
+  "branchId": "{{branchId}}",
+  "branchName": "Uptown",
+  "items": [
+    { "productId": "{{productId}}", "productTitle": "Backpack", "quantity": 12, "unitPrice": 100.00 },
+    { "productId": "{{otherProductId}}", "productTitle": "Wallet", "quantity": 2, "unitPrice": 25.00 }
+  ]
+}
+
+###
+### Cancel one line. The sale stays active and its total is recalculated.
+### Raises ItemCancelled — check the application log.
+PATCH {{host}}/api/sales/{{saleId}}/items/{{saleItemId}}/cancel
+
+###
+### Cancel the whole sale. The record is kept and the total is zeroed.
+### Raises SaleCancelled.
+PATCH {{host}}/api/sales/{{saleId}}/cancel
+
+###
+### Cancelling twice is refused.
+### Expect 400 with { "type": "BusinessRuleViolation", ... }
+PATCH {{host}}/api/sales/{{saleId}}/cancel
+
+###
+### Hard delete. Prefer cancel for voiding a sale in practice.
+DELETE {{host}}/api/sales/{{saleId}}

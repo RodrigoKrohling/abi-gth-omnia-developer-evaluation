@@ -1,7 +1,0 @@
-# Use this workspace to collaborate
-workspace:
-  id: 030afa9d-1692-48df-b2aa-652a3fdac6ce
-
-localResources:
-  specs:
-    - ../src/Ambev.DeveloperEvaluation.WebApi/obj/Debug/net8.0/EndpointInfo/Ambev.DeveloperEvaluation.WebApi.json

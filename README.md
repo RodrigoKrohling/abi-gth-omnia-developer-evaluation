@@ -240,14 +240,14 @@ swapping in a real broker is a registration change.
 dotnet test
 ```
 
-**226 tests, no database or container required.** The integration and functional
+**243 tests, no database or container required.** The integration and functional
 suites run against SQLite in memory, so `dotnet test` works on a clean machine.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 179 | discount tiers, aggregate invariants, handlers, caching, query building |
+| Unit | 186 | discount tiers, aggregate invariants, handlers, caching, query building, mapping configuration |
 | Integration | 26 | EF Core mapping, repository queries, event dispatch ordering |
-| Functional | 21 | the real HTTP pipeline end to end |
+| Functional | 31 | the real HTTP pipeline end to end, for both Sales and Users/Auth |
 
 Coverage report:
 
@@ -375,6 +375,24 @@ BCL throws `InvalidOperationException` for unresolvable dependencies and other
 ordinary defects; mapping it to 409 reported genuine faults as business conflicts and
 kept them out of the logs.
 
+**Enums cross the wire as names, not ordinals.** `.doc/users-api.md` specifies
+`"status": "Active"` and `"role": "Customer"`, but System.Text.Json defaults to
+integers, so the API neither produced nor accepted its own documented format. A
+`JsonStringEnumConverter` is registered globally. Names are also the safer contract:
+an ordinal silently changes meaning if a value is inserted into the middle of an enum.
+
+**Model-binding failures use the same error contract as everything else.**
+`[ApiController]` answers an invalid `ModelState` with RFC 7807 `ProblemDetails`
+before the action runs, which meant a client had to understand two error shapes
+depending on whether a request failed at binding or at validation.
+`InvalidModelStateResponseFactory` maps them onto `{ type, error, detail }`.
+
+**`User` assigns its own identity.** It previously relied on the database default
+`gen_random_uuid()`, which is PostgreSQL-only, so the Users endpoints could not run
+against any other provider and the id was unknown until after the insert. The
+constructor now assigns it, matching `Sale`. The column default is left in the
+schema, so no migration was needed; it simply never fires.
+
 ### Known limitations
 
 - **No optimistic concurrency token on `Sale`.** Two concurrent updates to the same
@@ -382,7 +400,8 @@ kept them out of the logs.
   per-field locking.
 - **Event publishing is not transactional with the commit.** A crash between the two
   loses the announcement. An outbox would close this.
-- **`BaseController.Ok<T>` shadows `ControllerBase.Ok`** and double-wraps an
-  already-built envelope. `SalesController` avoids it by constructing results
-  explicitly; the template's `UsersController` still hits it and is left as found,
-  since Sales is the graded scope.
+- **`BaseController.Ok<T>` shadows `ControllerBase.Ok`** and wraps its argument in
+  an `ApiResponseWithData`, so passing an already-built envelope wraps it twice.
+  Every controller now constructs its result explicitly to avoid the trap, but the
+  helper itself is still there to be fallen into by the next endpoint someone adds.
+  Removing or renaming it would be the real fix.

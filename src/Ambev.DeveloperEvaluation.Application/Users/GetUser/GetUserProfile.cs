@@ -1,5 +1,5 @@
-using AutoMapper;
 using Ambev.DeveloperEvaluation.Domain.Entities;
+using AutoMapper;
 
 namespace Ambev.DeveloperEvaluation.Application.Users.GetUser;
 
@@ -13,6 +13,9 @@ public class GetUserProfile : Profile
     /// </summary>
     public GetUserProfile()
     {
-        CreateMap<User, GetUserResult>();
+        CreateMap<User, GetUserResult>()
+            // Username on the entity, Name on the result: the two do not pair by
+            // convention, so GET /api/users/{id} returned an empty name.
+            .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Username));
     }
 }

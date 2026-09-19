@@ -6,12 +6,15 @@ using Ambev.DeveloperEvaluation.Common.Security;
 using Ambev.DeveloperEvaluation.Common.Validation;
 using Ambev.DeveloperEvaluation.IoC;
 using Ambev.DeveloperEvaluation.ORM;
+using Ambev.DeveloperEvaluation.WebApi.Common;
 using Ambev.DeveloperEvaluation.WebApi.Middleware;
 using MediatR;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Reflection;
+using System.Text.Json.Serialization;
 
 namespace Ambev.DeveloperEvaluation.WebApi;
 
@@ -26,7 +29,53 @@ public class Program
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
             builder.AddDefaultLogging();
 
-            builder.Services.AddControllers();
+            builder.Services
+                .AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // Serialize and accept enums by name, not by ordinal.
+                    //
+                    // .doc/users-api.md specifies them as names - "status": "Active",
+                    // "role": "Customer" - but System.Text.Json defaults to integers,
+                    // so the API neither produced nor accepted the documented form: a
+                    // request sending "Active" failed model binding with a 400 before
+                    // reaching any handler.
+                    //
+                    // Names are also the better contract. An ordinal silently changes
+                    // meaning if someone inserts a value into the middle of an enum.
+                    options.JsonSerializerOptions.Converters.Add(
+                        new JsonStringEnumConverter());
+                });
+
+            // Route model-binding failures through the documented error contract.
+            //
+            // [ApiController] short-circuits an invalid ModelState before the action
+            // runs and answers with RFC 7807 ProblemDetails, whose "type" is a
+            // specification URL. That is a different shape from the
+            // { type, error, detail } body every other failure uses, so a client had
+            // to understand two error formats depending on whether the request failed
+            // at binding or at validation.
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var detail = string.Join(" ", context.ModelState
+                        .Where(entry => entry.Value?.Errors.Count > 0)
+                        .SelectMany(entry => entry.Value!.Errors)
+                        .Select(error => error.ErrorMessage)
+                        .Where(message => !string.IsNullOrWhiteSpace(message)));
+
+                    return new BadRequestObjectResult(new ApiErrorResponse
+                    {
+                        Type = "ValidationError",
+                        Error = "Invalid input data",
+                        Detail = string.IsNullOrWhiteSpace(detail)
+                            ? "The request body could not be read."
+                            : detail
+                    });
+                };
+            });
+
             builder.Services.AddEndpointsApiExplorer();
 
             builder.AddBasicHealthChecks();

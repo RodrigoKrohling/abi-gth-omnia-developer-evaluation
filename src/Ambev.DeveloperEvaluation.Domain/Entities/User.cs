@@ -83,6 +83,12 @@ public class User : BaseEntity, IUser
     /// </summary>
     public User()
     {
+        // The entity owns its identity from construction, matching the Sale
+        // aggregate. It previously relied on the database to generate the key with
+        // gen_random_uuid(), which is a PostgreSQL function: the same code could not
+        // run against any other provider, and the id was unknown until after the
+        // insert.
+        Id = Guid.NewGuid();
         CreatedAt = DateTime.UtcNow;
     }
 

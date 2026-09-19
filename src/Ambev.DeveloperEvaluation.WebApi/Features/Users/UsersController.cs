@@ -1,6 +1,7 @@
-﻿using MediatR;
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using AutoMapper;
+using FluentValidation;
 using Ambev.DeveloperEvaluation.WebApi.Common;
 using Ambev.DeveloperEvaluation.WebApi.Features.Users.CreateUser;
 using Ambev.DeveloperEvaluation.WebApi.Features.Users.GetUser;
@@ -47,7 +48,12 @@ public class UsersController : BaseController
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
-            return BadRequest(validationResult.Errors);
+            // Thrown rather than returned. Passing the failure list to
+            // ControllerBase.BadRequest(object) serializes a raw array of
+            // FluentValidation objects, which is not the documented
+            // { type, error, detail } shape. Throwing routes it through
+            // ExceptionHandlingMiddleware, matching every other endpoint.
+            throw new ValidationException(validationResult.Errors);
 
         var command = _mapper.Map<CreateUserCommand>(request);
         var response = await _mediator.Send(command, cancellationToken);
@@ -77,12 +83,22 @@ public class UsersController : BaseController
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
-            return BadRequest(validationResult.Errors);
+            // Thrown rather than returned. Passing the failure list to
+            // ControllerBase.BadRequest(object) serializes a raw array of
+            // FluentValidation objects, which is not the documented
+            // { type, error, detail } shape. Throwing routes it through
+            // ExceptionHandlingMiddleware, matching every other endpoint.
+            throw new ValidationException(validationResult.Errors);
 
         var command = _mapper.Map<GetUserCommand>(request.Id);
         var response = await _mediator.Send(command, cancellationToken);
 
-        return Ok(new ApiResponseWithData<GetUserResponse>
+        // OkObjectResult directly, not any Ok(...) overload: BaseController declares
+        // a protected Ok<T> helper that wraps its argument in an ApiResponseWithData,
+        // so passing an already-built envelope wraps it twice and the client receives
+        // {"data":{"data":{...}}}. Qualifying as base.Ok does not help, since `base`
+        // is BaseController - the class declaring the helper.
+        return new OkObjectResult(new ApiResponseWithData<GetUserResponse>
         {
             Success = true,
             Message = "User retrieved successfully",
@@ -107,12 +123,17 @@ public class UsersController : BaseController
         var validationResult = await validator.ValidateAsync(request, cancellationToken);
 
         if (!validationResult.IsValid)
-            return BadRequest(validationResult.Errors);
+            // Thrown rather than returned. Passing the failure list to
+            // ControllerBase.BadRequest(object) serializes a raw array of
+            // FluentValidation objects, which is not the documented
+            // { type, error, detail } shape. Throwing routes it through
+            // ExceptionHandlingMiddleware, matching every other endpoint.
+            throw new ValidationException(validationResult.Errors);
 
         var command = _mapper.Map<DeleteUserCommand>(request.Id);
         await _mediator.Send(command, cancellationToken);
 
-        return Ok(new ApiResponse
+        return new OkObjectResult(new ApiResponse
         {
             Success = true,
             Message = "User deleted successfully"

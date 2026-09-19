@@ -153,9 +153,15 @@ public class ExceptionHandlingMiddleware
                 Detail = unauthorized.Message
             }),
 
-        // A request that is syntactically valid but conflicts with current state,
-        // such as creating a sale whose number is already taken.
-        InvalidOperationException conflict => (
+        // A request that is well-formed but collides with something that already
+        // exists, such as creating a sale whose number is taken.
+        //
+        // Matched on a dedicated exception type, never on InvalidOperationException.
+        // The BCL throws that one for all manner of programming errors - an
+        // unresolvable dependency, a misconfigured DbContext, a sequence with no
+        // elements - and mapping it here reported every such fault to the client as a
+        // business conflict while never logging it as the bug it was.
+        ResourceConflictException conflict => (
             StatusCodes.Status409Conflict,
             new ApiErrorResponse
             {

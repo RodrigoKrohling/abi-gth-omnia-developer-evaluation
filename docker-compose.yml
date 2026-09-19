@@ -18,6 +18,11 @@ services:
       # The double underscore is the .NET configuration convention for nesting:
       # ConnectionStrings__DefaultConnection -> ConnectionStrings:DefaultConnection.
       - ConnectionStrings__DefaultConnection=Host=ambev.developerevaluation.database;Port=5432;Database=developer_evaluation;Username=developer;Password=ev@luAt10n
+      # The MongoDB audit trail is off by default in appsettings.json so the API can
+      # run without it. Inside compose the container is there, so it is switched on.
+      # The @ in the password is percent-encoded because the value is a URI.
+      - Mongo__Enabled=true
+      - Mongo__ConnectionString=mongodb://developer:ev%40luAt10n@ambev.developerevaluation.nosql:27017/?authSource=admin
     ports:
       # Explicit host:container mapping. The template declared only "8080", which
       # asks Docker for a *random* host port, so the documented
@@ -28,6 +33,10 @@ services:
       # Without this the API can boot first, fail to apply migrations, and exit.
       ambev.developerevaluation.database:
         condition: service_healthy
+      # Started, not healthy: the audit store is optional and the API degrades
+      # gracefully without it, so waiting on it would delay startup for nothing.
+      ambev.developerevaluation.nosql:
+        condition: service_started
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------

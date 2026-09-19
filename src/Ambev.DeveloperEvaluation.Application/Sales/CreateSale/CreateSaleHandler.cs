@@ -1,5 +1,6 @@
 using Ambev.DeveloperEvaluation.Application.Sales.Common;
 using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.Exceptions;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.Services;
 using Ambev.DeveloperEvaluation.Domain.ValueObjects;
@@ -49,7 +50,7 @@ public class CreateSaleHandler : IRequestHandler<CreateSaleCommand, SaleResult>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The sale as stored, including the calculated discounts and totals.</returns>
     /// <exception cref="ValidationException">Thrown when the command is malformed.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the sale number is already taken.</exception>
+    /// <exception cref="ResourceConflictException">Thrown when the sale number is already taken.</exception>
     public async Task<SaleResult> Handle(CreateSaleCommand command, CancellationToken cancellationToken)
     {
         var validator = new CreateSaleCommandValidator();
@@ -66,7 +67,7 @@ public class CreateSaleHandler : IRequestHandler<CreateSaleCommand, SaleResult>
         var existing = await _saleRepository.GetBySaleNumberAsync(command.SaleNumber, cancellationToken);
 
         if (existing is not null)
-            throw new InvalidOperationException(
+            throw new ResourceConflictException(
                 $"A sale with the number '{command.SaleNumber}' already exists.");
 
         // The value objects are constructed here, after validation, because they

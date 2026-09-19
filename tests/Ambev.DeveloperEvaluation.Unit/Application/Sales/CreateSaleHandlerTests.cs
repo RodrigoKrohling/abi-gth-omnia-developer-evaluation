@@ -78,7 +78,7 @@ public class CreateSaleHandlerTests
     }
 
     [Fact(DisplayName = "A duplicate sale number should be reported as a conflict")]
-    public async Task Given_ExistingSaleNumber_When_Handled_Then_ThrowsInvalidOperation()
+    public async Task Given_ExistingSaleNumber_When_Handled_Then_ThrowsResourceConflict()
     {
         var command = SaleCommandTestData.GenerateCreateCommand();
 
@@ -91,9 +91,10 @@ public class CreateSaleHandlerTests
 
         var act = () => _handler.Handle(command, CancellationToken.None);
 
-        // InvalidOperationException maps to 409 Conflict in the middleware, which is
-        // the right answer for a well-formed request that clashes with current state.
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        // A dedicated ResourceConflictException, not InvalidOperationException, which
+        // the middleware maps to 409. Matching the framework's generic exception there
+        // would report unrelated programming errors as business conflicts.
+        await act.Should().ThrowAsync<ResourceConflictException>()
             .WithMessage("*already exists*");
 
         await _saleRepository.DidNotReceive().CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>());

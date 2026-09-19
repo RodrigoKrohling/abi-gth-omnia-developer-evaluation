@@ -8,6 +8,21 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>..\..</DockerfileContext>
     <DockerComposeProjectPath>..\..\docker-compose.dcproj</DockerComposeProjectPath>
+
+    <!--
+      Emits the XML documentation file that Swashbuckle reads, so the <summary>,
+      <remarks> and <response> comments on the controllers and DTOs become the
+      descriptions shown in Swagger UI instead of living only in the source.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!--
+      CS1591 warns about any public member without an XML comment. The template's
+      existing WebApi types are largely undocumented, so leaving it on would bury
+      real warnings under dozens of inherited ones. The new Sales code is documented
+      throughout regardless.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

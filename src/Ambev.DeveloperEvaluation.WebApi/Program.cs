@@ -61,7 +61,11 @@ public class Program
             builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
             var app = builder.Build();
-            app.UseMiddleware<ValidationExceptionMiddleware>();
+
+            // Registered first so that it wraps every other middleware and endpoint:
+            // anything thrown downstream is converted into the documented
+            // { type, error, detail } body instead of an HTML error page.
+            app.UseMiddleware<ExceptionHandlingMiddleware>();
 
             // -- Schema ---------------------------------------------------------
             // Bring the database up to the latest migration on startup.

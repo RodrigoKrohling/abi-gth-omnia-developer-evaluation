@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Ambev.DeveloperEvaluation.Common.Caching;
 
 namespace Ambev.DeveloperEvaluation.IoC.ModuleInitializers;
 
@@ -33,6 +34,20 @@ public class InfrastructureModuleInitializer : IModuleInitializer
         // request. Registered here rather than being newed up inside a handler so
         // that changing the pricing scheme is a one-line change in composition.
         builder.Services.AddSingleton<IDiscountPolicy, QuantityTierDiscountPolicy>();
+
+        var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            builder.Services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = redisConnectionString;
+            });
+            builder.Services.AddSingleton<ICacheService, DistributedCacheService>();
+        }
+        else
+        {
+            builder.Services.AddSingleton<ICacheService, NullCacheService>();
+        }
 
         RegisterDomainEventPublishing(builder);
     }

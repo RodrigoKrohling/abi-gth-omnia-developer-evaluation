@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Application.Sales.Common;
+using Ambev.DeveloperEvaluation.Common.Caching;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.Services;
 using Ambev.DeveloperEvaluation.Domain.ValueObjects;
@@ -15,6 +16,7 @@ public class UpdateSaleHandler : IRequestHandler<UpdateSaleCommand, SaleResult>
 {
     private readonly ISaleRepository _saleRepository;
     private readonly IDiscountPolicy _discountPolicy;
+    private readonly ICacheService _cache;
     private readonly IMapper _mapper;
 
     /// <summary>
@@ -22,14 +24,17 @@ public class UpdateSaleHandler : IRequestHandler<UpdateSaleCommand, SaleResult>
     /// </summary>
     /// <param name="saleRepository">The sale repository.</param>
     /// <param name="discountPolicy">The rules that decide item discounts.</param>
+    /// <param name="cache">The read-model cache, invalidated after the write.</param>
     /// <param name="mapper">The AutoMapper instance.</param>
     public UpdateSaleHandler(
         ISaleRepository saleRepository,
         IDiscountPolicy discountPolicy,
+        ICacheService cache,
         IMapper mapper)
     {
         _saleRepository = saleRepository;
         _discountPolicy = discountPolicy;
+        _cache = cache;
         _mapper = mapper;
     }
 
@@ -76,6 +81,11 @@ public class UpdateSaleHandler : IRequestHandler<UpdateSaleCommand, SaleResult>
             _discountPolicy);
 
         await _saleRepository.UpdateAsync(sale, cancellationToken);
+        // Invalidate after the write, never before. Removing the entry first leaves a
+        // window in which a concurrent read repopulates the cache from the old row,
+        // and the stale value then survives until its time-to-live expires.
+        await _cache.RemoveAsync(SaleCacheKeys.ForSale(command.Id), cancellationToken);
+
 
         return _mapper.Map<SaleResult>(sale);
     }

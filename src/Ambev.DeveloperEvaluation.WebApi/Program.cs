@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Application;
+using Ambev.DeveloperEvaluation.Common.Caching;
 using Ambev.DeveloperEvaluation.Common.HealthChecks;
 using Ambev.DeveloperEvaluation.Common.Logging;
 using Ambev.DeveloperEvaluation.Common.Security;
@@ -63,6 +64,10 @@ public class Program
             );
 
             builder.Services.AddJwtAuthentication(builder.Configuration);
+
+            // Registers Redis when Cache:Enabled is set, and a no-op cache otherwise,
+            // so the application runs identically with or without Redis available.
+            builder.AddReadModelCache();
 
             builder.RegisterDependencies();
 

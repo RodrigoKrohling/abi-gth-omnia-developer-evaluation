@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Application.Sales.Common;
+using Ambev.DeveloperEvaluation.Common.Caching;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using AutoMapper;
 using FluentValidation;
@@ -12,16 +13,20 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.CancelSaleItem;
 public class CancelSaleItemHandler : IRequestHandler<CancelSaleItemCommand, SaleResult>
 {
     private readonly ISaleRepository _saleRepository;
+    private readonly ICacheService _cache;
     private readonly IMapper _mapper;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CancelSaleItemHandler"/> class.
     /// </summary>
     /// <param name="saleRepository">The sale repository.</param>
+    /// <param name="cache">The read-model cache, invalidated after the write.</param>
     /// <param name="mapper">The AutoMapper instance.</param>
-    public CancelSaleItemHandler(ISaleRepository saleRepository, IMapper mapper)
+    public CancelSaleItemHandler(ISaleRepository saleRepository, ICacheService cache,
+        IMapper mapper)
     {
         _saleRepository = saleRepository;
+        _cache = cache;
         _mapper = mapper;
     }
 
@@ -58,6 +63,11 @@ public class CancelSaleItemHandler : IRequestHandler<CancelSaleItemCommand, Sale
         sale.CancelItem(request.SaleItemId);
 
         await _saleRepository.UpdateAsync(sale, cancellationToken);
+        // Invalidate after the write, never before. Removing the entry first leaves a
+        // window in which a concurrent read repopulates the cache from the old row,
+        // and the stale value then survives until its time-to-live expires.
+        await _cache.RemoveAsync(SaleCacheKeys.ForSale(request.SaleId), cancellationToken);
+
 
         return _mapper.Map<SaleResult>(sale);
     }

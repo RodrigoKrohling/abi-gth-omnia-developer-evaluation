@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Application.Sales.CancelSale;
+using Ambev.DeveloperEvaluation.Common.Caching;
 using Ambev.DeveloperEvaluation.Application.Sales.CancelSaleItem;
 using Ambev.DeveloperEvaluation.Application.Sales.DeleteSale;
 using Ambev.DeveloperEvaluation.Application.Sales.GetSale;
@@ -32,6 +33,12 @@ public class SaleQueryAndCancelHandlerTests
     private readonly AutoMapper.IMapper _mapper = SaleCommandTestData.CreateMapper();
 
     /// <summary>
+    /// A cache that stores nothing, so these tests exercise the handlers rather than
+    /// Redis. Cache behaviour has tests of its own.
+    /// </summary>
+    private readonly ICacheService _cache = new NullCacheService();
+
+    /// <summary>
     /// Stubs the repository to return the given sale for its identifier.
     /// </summary>
     private void GivenStored(Sale sale) =>
@@ -44,7 +51,7 @@ public class SaleQueryAndCancelHandlerTests
     {
         var sale = SaleTestData.GenerateSaleWithItems(2);
         GivenStored(sale);
-        var handler = new GetSaleHandler(_saleRepository, _mapper);
+        var handler = new GetSaleHandler(_saleRepository, _cache, _mapper);
 
         var result = await handler.Handle(new GetSaleCommand(sale.Id), CancellationToken.None);
 
@@ -57,7 +64,7 @@ public class SaleQueryAndCancelHandlerTests
     public async Task Given_MissingSale_When_Getting_Then_ThrowsKeyNotFound()
     {
         _saleRepository.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((Sale?)null);
-        var handler = new GetSaleHandler(_saleRepository, _mapper);
+        var handler = new GetSaleHandler(_saleRepository, _cache, _mapper);
 
         var act = () => handler.Handle(new GetSaleCommand(Guid.NewGuid()), CancellationToken.None);
 
@@ -68,7 +75,7 @@ public class SaleQueryAndCancelHandlerTests
     [Fact(DisplayName = "Getting a sale with an empty id should be rejected")]
     public async Task Given_EmptyId_When_Getting_Then_ThrowsValidationException()
     {
-        var handler = new GetSaleHandler(_saleRepository, _mapper);
+        var handler = new GetSaleHandler(_saleRepository, _cache, _mapper);
 
         var act = () => handler.Handle(new GetSaleCommand(Guid.Empty), CancellationToken.None);
 
@@ -136,7 +143,7 @@ public class SaleQueryAndCancelHandlerTests
         _saleRepository.UpdateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>())
             .Returns(call => call.Arg<Sale>());
 
-        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _mapper);
+        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _cache, _mapper);
         var command = SaleCommandTestData.GenerateUpdateCommand(sale.Id, itemCount: 2);
 
         var result = await handler.Handle(command, CancellationToken.None);
@@ -152,7 +159,7 @@ public class SaleQueryAndCancelHandlerTests
     public async Task Given_MissingSale_When_Updating_Then_ThrowsKeyNotFound()
     {
         _saleRepository.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((Sale?)null);
-        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _mapper);
+        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _cache, _mapper);
 
         var act = () => handler.Handle(
             SaleCommandTestData.GenerateUpdateCommand(Guid.NewGuid()), CancellationToken.None);
@@ -167,7 +174,7 @@ public class SaleQueryAndCancelHandlerTests
         sale.Cancel();
         GivenStored(sale);
 
-        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _mapper);
+        var handler = new UpdateSaleHandler(_saleRepository, _discountPolicy, _cache, _mapper);
 
         var act = () => handler.Handle(
             SaleCommandTestData.GenerateUpdateCommand(sale.Id), CancellationToken.None);
@@ -185,7 +192,7 @@ public class SaleQueryAndCancelHandlerTests
     {
         var sale = SaleTestData.GenerateSaleWithSingleItem(5, 100m);
         GivenStored(sale);
-        var handler = new CancelSaleHandler(_saleRepository, _mapper);
+        var handler = new CancelSaleHandler(_saleRepository, _cache, _mapper);
 
         var result = await handler.Handle(new CancelSaleCommand(sale.Id), CancellationToken.None);
 
@@ -202,7 +209,7 @@ public class SaleQueryAndCancelHandlerTests
         var sale = SaleTestData.GenerateSaleWithItems(1);
         sale.Cancel();
         GivenStored(sale);
-        var handler = new CancelSaleHandler(_saleRepository, _mapper);
+        var handler = new CancelSaleHandler(_saleRepository, _cache, _mapper);
 
         var act = () => handler.Handle(new CancelSaleCommand(sale.Id), CancellationToken.None);
 
@@ -220,7 +227,7 @@ public class SaleQueryAndCancelHandlerTests
         sale.ClearDomainEvents();
         GivenStored(sale);
 
-        var handler = new CancelSaleItemHandler(_saleRepository, _mapper);
+        var handler = new CancelSaleItemHandler(_saleRepository, _cache, _mapper);
 
         var result = await handler.Handle(
             new CancelSaleItemCommand(sale.Id, toCancel.Id), CancellationToken.None);
@@ -239,7 +246,7 @@ public class SaleQueryAndCancelHandlerTests
     {
         var sale = SaleTestData.GenerateSaleWithItems(1);
         GivenStored(sale);
-        var handler = new CancelSaleItemHandler(_saleRepository, _mapper);
+        var handler = new CancelSaleItemHandler(_saleRepository, _cache, _mapper);
 
         var act = () => handler.Handle(
             new CancelSaleItemCommand(sale.Id, Guid.NewGuid()), CancellationToken.None);
@@ -254,7 +261,7 @@ public class SaleQueryAndCancelHandlerTests
     {
         var id = Guid.NewGuid();
         _saleRepository.DeleteAsync(id, Arg.Any<CancellationToken>()).Returns(true);
-        var handler = new DeleteSaleHandler(_saleRepository);
+        var handler = new DeleteSaleHandler(_saleRepository, _cache);
 
         var result = await handler.Handle(new DeleteSaleCommand(id), CancellationToken.None);
 
@@ -265,7 +272,7 @@ public class SaleQueryAndCancelHandlerTests
     public async Task Given_MissingSale_When_Deleting_Then_ThrowsKeyNotFound()
     {
         _saleRepository.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(false);
-        var handler = new DeleteSaleHandler(_saleRepository);
+        var handler = new DeleteSaleHandler(_saleRepository, _cache);
 
         var act = () => handler.Handle(new DeleteSaleCommand(Guid.NewGuid()), CancellationToken.None);
 

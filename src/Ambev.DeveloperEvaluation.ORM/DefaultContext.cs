@@ -25,6 +25,17 @@ public class DefaultContext : DbContext
     public DbSet<User> Users { get; set; }
 
     /// <summary>
+    /// Gets the sales records.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no <c>DbSet&lt;SaleItem&gt;</c>. Items are reachable only
+    /// through their sale, which is what stops a caller from loading or modifying one
+    /// outside the aggregate and stepping around the rules <see cref="Sale"/>
+    /// enforces.
+    /// </remarks>
+    public DbSet<Sale> Sales { get; set; }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="DefaultContext"/> class.
     /// </summary>
     /// <param name="options">

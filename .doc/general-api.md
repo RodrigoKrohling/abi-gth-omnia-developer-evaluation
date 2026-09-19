@@ -155,5 +155,5 @@ For detailed error information, refer to the specific endpoint documentation.
 <br>
 <div style="display: flex; justify-content: space-between;">
   <a href="./frameworks.md">Previous: Frameworks</a>
-  <a href="./products-api.md">Next: Products API</a>
+  <a href="./sales-api.md">Next: Sales API</a>
 </div>

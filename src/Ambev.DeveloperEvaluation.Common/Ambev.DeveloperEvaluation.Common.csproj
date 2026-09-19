@@ -28,4 +28,18 @@
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
 	</ItemGroup>
 
+	<!--
+		Serilog.Exceptions.EntityFrameworkCore 8.4.0 depends on EF Core 6.0.0, which
+		transitively drags in Microsoft.Extensions.Caching.Memory 6.0.0 - a version
+		carrying a high severity advisory (GHSA-qj66-m88j-hmgj).
+
+		Referencing the package directly at 8.0.x promotes it to a top-level
+		dependency, so NuGet resolves the patched version instead of the transitive
+		one. This is the whole point of the reference; nothing in this project uses
+		the memory cache API.
+	-->
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+	</ItemGroup>
+
 </Project>

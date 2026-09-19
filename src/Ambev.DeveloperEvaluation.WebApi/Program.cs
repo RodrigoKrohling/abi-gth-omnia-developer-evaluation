@@ -40,7 +40,15 @@ public class Program
 
             builder.RegisterDependencies();
 
-            builder.Services.AddAutoMapper(typeof(Program).Assembly, typeof(ApplicationLayer).Assembly);
+            // Scans both assemblies for AutoMapper Profile classes: the WebApi layer
+            // maps Request -> Command and Result -> Response, the Application layer
+            // maps Command -> Entity and Entity -> Result.
+            //
+            // AutoMapper 15 removed the AddAutoMapper(params Assembly[]) overload in
+            // favour of configuring the expression explicitly.
+            builder.Services.AddAutoMapper(cfg => cfg.AddMaps(
+                typeof(Program).Assembly,
+                typeof(ApplicationLayer).Assembly));
 
             builder.Services.AddMediatR(cfg =>
             {
@@ -55,13 +63,42 @@ public class Program
             var app = builder.Build();
             app.UseMiddleware<ValidationExceptionMiddleware>();
 
+            // -- Schema ---------------------------------------------------------
+            // Bring the database up to the latest migration on startup.
+            //
+            // Without this a freshly created container starts against an empty
+            // database and every request fails on a missing table, which makes the
+            // documented "docker compose up" flow unusable out of the box.
+            //
+            // Restricted to Development on purpose: applying migrations automatically
+            // is convenient for a reviewer running the project, but in production
+            // schema changes belong to a controlled deployment step, not to
+            // application startup.
+            if (app.Environment.IsDevelopment())
+            {
+                using var scope = app.Services.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<DefaultContext>();
+                context.Database.Migrate();
+                Log.Information("Database migrations applied");
+            }
+
+            // -- API documentation ----------------------------------------------
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
-            app.UseHttpsRedirection();
+            // -- Transport ------------------------------------------------------
+            // HTTPS redirection is applied outside Development only. The compose
+            // container publishes plain HTTP on 8080 and holds no developer
+            // certificate, so redirecting there would bounce every request to a port
+            // that refuses connections. In a real deployment TLS is terminated
+            // upstream and this middleware enforces the upgrade.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHttpsRedirection();
+            }
 
             app.UseAuthentication();
             app.UseAuthorization();

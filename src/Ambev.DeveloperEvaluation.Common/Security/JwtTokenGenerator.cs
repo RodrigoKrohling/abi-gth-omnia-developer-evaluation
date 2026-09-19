@@ -39,7 +39,16 @@ public class JwtTokenGenerator : IJwtTokenGenerator
     public string GenerateToken(IUser user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(_configuration["Jwt:SecretKey"]);
+
+        // Fail loudly and early when the signing key is absent. Reading the key
+        // straight into Encoding.ASCII.GetBytes produced a nullable warning and, if
+        // the setting were ever missing, a bare NullReferenceException at the point
+        // of signing rather than a message naming the missing configuration.
+        var secretKey = _configuration["Jwt:SecretKey"];
+        if (string.IsNullOrWhiteSpace(secretKey))
+            throw new InvalidOperationException("The 'Jwt:SecretKey' configuration value is missing.");
+
+        var key = Encoding.ASCII.GetBytes(secretKey);
 
         var claims = new[]
         {

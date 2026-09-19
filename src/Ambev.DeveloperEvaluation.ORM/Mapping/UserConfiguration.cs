@@ -1,4 +1,4 @@
-﻿using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System.Text.RegularExpressions;
@@ -12,7 +12,18 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("Users");
 
         builder.HasKey(u => u.Id);
-        builder.Property(u => u.Id).HasColumnType("uuid").HasDefaultValueSql("gen_random_uuid()");
+        // ValueGeneratedNever because the entity's constructor assigns the key, so
+        // EF must include it in the INSERT rather than expecting the database to fill
+        // it in. The column default is left in place so the PostgreSQL schema is
+        // unchanged and no migration is needed; it simply never fires now.
+        //
+        // This also makes the Users feature runnable on any provider. The default
+        // calls gen_random_uuid(), which only PostgreSQL has, so an insert through
+        // SQLite - as the functional tests use - failed outright.
+        builder.Property(u => u.Id)
+            .HasColumnType("uuid")
+            .HasDefaultValueSql("gen_random_uuid()")
+            .ValueGeneratedNever();
 
         builder.Property(u => u.Username).IsRequired().HasMaxLength(50);
         builder.Property(u => u.Password).IsRequired().HasMaxLength(100);

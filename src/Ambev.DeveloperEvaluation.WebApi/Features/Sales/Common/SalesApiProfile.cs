@@ -36,7 +36,15 @@ public class SalesApiProfile : Profile
         // Inbound: HTTP body -> application command.
         CreateMap<CreateSaleRequest, CreateSaleCommand>();
         CreateMap<CreateSaleItemRequest, CreateSaleItemCommand>();
-        CreateMap<UpdateSaleRequest, UpdateSaleCommand>();
+
+        CreateMap<UpdateSaleRequest, UpdateSaleCommand>()
+            // UpdateSaleRequest carries no Id: the route says which sale is being
+            // updated, and SalesController assigns command.Id from it immediately
+            // after this map runs, so the two can never disagree. Declared as an
+            // explicit ignore rather than left implicit, because an unfillable
+            // destination member fails AutoMapper's configuration validation.
+            .ForMember(dest => dest.Id, opt => opt.Ignore());
+
         CreateMap<UpdateSaleItemRequest, UpdateSaleItemCommand>();
 
         // Outbound: application result -> HTTP body.

@@ -9,15 +9,6 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.CancelSaleItem;
 /// </summary>
 /// <param name="SaleId">The sale the item belongs to.</param>
 /// <param name="SaleItemId">The item to cancel.</param>
-/// <remarks>
-/// The sale identifier is carried alongside the item identifier so the item is
-/// always reached through its aggregate root. Looking the item up on its own would
-/// let a caller cancel an item on a sale they did not name, and would skip the
-/// sale-level checks - that the sale is not itself cancelled, and that the total is
-/// recalculated afterwards.
-///
-/// Returns the sale so the caller sees the recalculated total immediately.
-/// </remarks>
 public record CancelSaleItemCommand(Guid SaleId, Guid SaleItemId) : IRequest<SaleResult>;
 
 /// <summary>

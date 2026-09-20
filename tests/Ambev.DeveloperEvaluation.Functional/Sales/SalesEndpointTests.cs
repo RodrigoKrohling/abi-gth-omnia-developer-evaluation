@@ -33,9 +33,14 @@ public class SalesEndpointTests : IClassFixture<SalesApiFactory>
     /// Initializes the test with a client for the in-memory API.
     /// </summary>
     /// <param name="factory">The shared application factory.</param>
+    /// <remarks>
+    /// The client carries a bearer token, because every sale route requires one.
+    /// What happens <i>without</i> a token is the subject of
+    /// <c>Auth/AuthorizationTests</c> rather than of every test here.
+    /// </remarks>
     public SalesEndpointTests(SalesApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthenticatedClient();
     }
 
     /// <summary>

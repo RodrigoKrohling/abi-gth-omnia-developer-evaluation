@@ -14,9 +14,9 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
 /// Handles <see cref="CreateSaleCommand"/>.
 /// </summary>
 /// <remarks>
-/// The handler orchestrates; it does not decide. It validates the request, checks
-/// that the sale number is free, asks the domain to build the sale, and persists
-/// the result. Every business rule - which quantities are sellable, what discount
+/// It validates the request, checks that the sale number is free,
+/// asks the domain to build the sale, and persists the result.
+/// Every business rule - which quantities are sellable, what discount
 /// each earns, whether a product may appear twice - lives in
 /// <see cref="Sale"/> and <see cref="IDiscountPolicy"/>, so there is no second place
 /// where the pricing rules could quietly diverge.
@@ -59,28 +59,18 @@ public class CreateSaleHandler : IRequestHandler<CreateSaleCommand, SaleResult>
         if (!validationResult.IsValid)
             throw new ValidationException(validationResult.Errors);
 
-        // Checked before building anything so the caller gets a 409 naming the
-        // conflict, rather than a unique index violation surfacing as a 500. The
-        // index remains the real guarantee: between this read and the insert, a
-        // concurrent request could still take the number, and the database is what
-        // settles that race.
         var existing = await _saleRepository.GetBySaleNumberAsync(command.SaleNumber, cancellationToken);
 
         if (existing is not null)
             throw new ResourceConflictException(
                 $"A sale with the number '{command.SaleNumber}' already exists.");
 
-        // The value objects are constructed here, after validation, because they
-        // refuse to exist in an invalid state and would otherwise throw
-        // ArgumentException where a ValidationException is wanted.
         var sale = Sale.Create(
             command.SaleNumber,
             command.SaleDate,
             new CustomerReference(command.CustomerId, command.CustomerName),
             new BranchReference(command.BranchId, command.BranchName));
 
-        // Each item goes through the aggregate, which applies the discount policy and
-        // enforces the quantity limit. The handler never computes a discount itself.
         foreach (var item in command.Items)
         {
             sale.AddItem(

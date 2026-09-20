@@ -12,10 +12,8 @@ public class BaseController : ControllerBase
     /// </summary>
     /// <returns>The current user's identifier.</returns>
     /// <remarks>
-    /// The claim is written by <c>JwtTokenGenerator</c> from <c>IUser.Id</c>, which is
-    /// a <see cref="Guid"/> rendered as a string. This previously parsed the claim as an
-    /// <c>int</c>, which threw a <see cref="FormatException"/> for every token the
-    /// application itself issues.
+    /// The claim holds a <see cref="Guid"/> rendered as a string, written by
+    /// <c>JwtTokenGenerator</c> from <c>IUser.Id</c>.
     /// </remarks>
     /// <exception cref="InvalidOperationException">Thrown when the request is not authenticated.</exception>
     protected Guid GetCurrentUserId() =>

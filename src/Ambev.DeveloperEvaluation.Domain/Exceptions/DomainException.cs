@@ -13,9 +13,6 @@ namespace Ambev.DeveloperEvaluation.Domain.Exceptions;
 /// <see cref="DomainException"/> means the input was well-formed but the operation
 /// is not permitted in the current state. The API surfaces the two differently:
 /// <c>ValidationError</c> versus <c>BusinessRuleViolation</c>, both as HTTP 400.
-///
-/// The class previously declared no namespace, which placed it in the global
-/// namespace and made it unclear which layer owned it.
 /// </remarks>
 public class DomainException : Exception
 {

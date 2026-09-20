@@ -12,13 +12,9 @@ namespace Ambev.DeveloperEvaluation.Functional.Users;
 /// against the real application.
 /// </summary>
 /// <remarks>
-/// These endpoints shipped with the template and had no tests of any kind, which is
-/// how three broken AutoMapper profiles survived: a map declared in the wrong
-/// direction compiles and passes every unit test that does not exercise it, then
-/// fails on the first real request.
-///
-/// Each test below corresponds to a mapping or envelope defect that was present
-/// before these were written.
+/// Covers the mapping and response-envelope behaviour that only a real request
+/// exercises: a map declared in the wrong direction is valid configuration and
+/// passes every unit test that does not use it.
 /// </remarks>
 public class UsersEndpointTests : IClassFixture<SalesApiFactory>
 {
@@ -33,9 +29,14 @@ public class UsersEndpointTests : IClassFixture<SalesApiFactory>
     /// Initializes the test with a client for the in-memory API.
     /// </summary>
     /// <param name="factory">The shared application factory.</param>
+    /// <remarks>
+    /// Authenticated, because reading and deleting a user require a token. Creating
+    /// one does not - the registration tests below run over this same client and are
+    /// unaffected by the header it carries.
+    /// </remarks>
     public UsersEndpointTests(SalesApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthenticatedClient();
     }
 
     /// <summary>
@@ -73,9 +74,8 @@ public class UsersEndpointTests : IClassFixture<SalesApiFactory>
 
         data.GetProperty("id").GetGuid().Should().NotBeEmpty();
 
-        // CreateUserResult previously carried nothing but Id, while the response type
-        // declared five more fields. They came back empty because AutoMapper had no
-        // source for them.
+        // Every field the response type declares must have a source on the result,
+        // or it serializes as an empty value beside a populated id.
         data.GetProperty("name").GetString().Should().Be("mariasilva");
         data.GetProperty("email").GetString().Should().Be("create-details@example.com");
         data.GetProperty("phone").GetString().Should().Be("+5511999999999");
@@ -110,8 +110,8 @@ public class UsersEndpointTests : IClassFixture<SalesApiFactory>
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
 
-        // The controller previously returned the raw FluentValidation failure list,
-        // which serialized as a JSON array rather than the documented object.
+        // Returning the raw FluentValidation failures here would serialize as a JSON
+        // array rather than the documented object.
         body.ValueKind.Should().Be(JsonValueKind.Object);
         body.GetProperty("type").GetString().Should().Be("ValidationError");
         body.TryGetProperty("error", out _).Should().BeTrue();

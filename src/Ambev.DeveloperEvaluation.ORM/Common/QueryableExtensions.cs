@@ -8,21 +8,6 @@ namespace Ambev.DeveloperEvaluation.ORM.Common;
 /// Translates the string-based ordering and filtering conventions from
 /// <c>.doc/general-api.md</c> into LINQ expression trees.
 /// </summary>
-/// <remarks>
-/// Everything here builds an <see cref="Expression"/> rather than filtering an
-/// in-memory sequence, so the work is composed into the <see cref="IQueryable{T}"/>
-/// and executed by the database as part of a single SQL statement. Materialising
-/// the table and filtering it in memory would produce identical results and become
-/// unusable at any real size.
-///
-/// Field names arrive in the JSON casing of the response (<c>saleNumber</c>,
-/// <c>customer.name</c>) and are matched case-insensitively against CLR property
-/// names, with dots walking into owned value objects.
-///
-/// Unknown field names are ignored rather than rejected. That keeps an unrecognised
-/// query parameter from turning a list request into an error, and it means the
-/// reflection lookup can never be used to probe which properties exist.
-/// </remarks>
 public static class QueryableExtensions
 {
     /// <summary>
@@ -58,13 +43,6 @@ public static class QueryableExtensions
     /// to append a tiebreaker with <c>ThenBy</c>.
     /// </param>
     /// <returns>The ordered query.</returns>
-    /// <remarks>
-    /// The flag exists because a caller cannot determine this by type-testing the
-    /// result. EF Core's internal query implementations satisfy
-    /// <see cref="IOrderedQueryable{T}"/> whether or not an ordering has been applied,
-    /// so <c>is IOrderedQueryable&lt;T&gt;</c> would report true for an unordered query
-    /// and a following <c>ThenBy</c> would throw at translation time.
-    /// </remarks>
     public static IQueryable<T> ApplyOrdering<T>(this IQueryable<T> source, string? order, out bool wasOrdered)
     {
         wasOrdered = false;
@@ -72,15 +50,12 @@ public static class QueryableExtensions
         if (string.IsNullOrWhiteSpace(order))
             return source;
 
-        // A caller may quote the whole clause (_order="price desc, title asc"), in
-        // which case the quotes arrive as part of the value.
         order = order.Trim().Trim('"', '\'');
 
         var isFirstTerm = true;
 
         foreach (var term in order.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            // "totalAmount desc" -> field "totalAmount", direction "desc".
             var parts = term.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var fieldName = parts[0];
             var descending = parts.Length > 1 && parts[1].Equals("desc", StringComparison.OrdinalIgnoreCase);
@@ -90,12 +65,8 @@ public static class QueryableExtensions
             if (!TryResolveMember(parameter, fieldName, out var member))
                 continue;
 
-            // x => x.TotalAmount, boxed to object-returning lambda type via the
-            // member's own type so the database sees the correct column type.
             var selector = Expression.Lambda(member, parameter);
 
-            // OrderBy for the first term, ThenBy for the rest; otherwise each term
-            // would discard the previous one's ordering.
             var method = (isFirstTerm, descending) switch
             {
                 (true, false) => nameof(Queryable.OrderBy),
@@ -176,10 +147,8 @@ public static class QueryableExtensions
     {
         /// <summary>Exact match, or a wildcard string match if the value contains <c>*</c>.</summary>
         Equal,
-
         /// <summary>Greater than or equal, from a <c>_min</c> prefix.</summary>
         Min,
-
         /// <summary>Less than or equal, from a <c>_max</c> prefix.</summary>
         Max
     }
@@ -207,12 +176,6 @@ public static class QueryableExtensions
     /// <param name="path">A property name, or a dotted path such as <c>customer.name</c>.</param>
     /// <param name="member">The resolved member access expression.</param>
     /// <returns><c>true</c> when every segment resolved; otherwise <c>false</c>.</returns>
-    /// <remarks>
-    /// Matching is case-insensitive so that the JSON casing used in responses
-    /// (<c>saleNumber</c>) resolves to the CLR property (<c>SaleNumber</c>). Only
-    /// public instance properties are considered, so fields and private state are
-    /// not reachable from a query string.
-    /// </remarks>
     private static bool TryResolveMember(ParameterExpression parameter, string path, out Expression member)
     {
         member = parameter;
@@ -229,7 +192,6 @@ public static class QueryableExtensions
             member = Expression.Property(member, property);
         }
 
-        // A path that resolved to nothing but the parameter itself is not a member.
         return member != parameter;
     }
 
@@ -247,16 +209,12 @@ public static class QueryableExtensions
         string rawValue,
         Comparison comparison)
     {
-        // Wildcards are a string-only feature and only meaningful for exact-match
-        // keys; "_minTitle=A*" has no sensible reading.
         if (comparison == Comparison.Equal && member.Type == typeof(string) && rawValue.Contains('*'))
             return BuildWildcardPredicate(member, parameter, rawValue);
 
         if (!TryConvert(rawValue, member.Type, out var typedValue))
             return null;
 
-        // Expression.Constant on the unwrapped type keeps the comparison typed; for
-        // a nullable column the constant is promoted to match.
         var constant = Expression.Constant(typedValue, member.Type);
 
         Expression body = comparison switch
@@ -288,15 +246,6 @@ public static class QueryableExtensions
     /// <param name="parameter">The lambda parameter.</param>
     /// <param name="rawValue">The pattern, such as <c>Fjallraven*</c>.</param>
     /// <returns>The predicate lambda.</returns>
-    /// <remarks>
-    /// Both sides are lowered so matching is case-insensitive. EF Core translates
-    /// <c>ToLower()</c> to SQL <c>LOWER()</c>, which keeps the comparison in the
-    /// database; using <see cref="StringComparison"/> overloads instead would fail
-    /// to translate and silently fall back to client-side evaluation.
-    ///
-    /// A null column would throw inside <c>LOWER()</c> in memory, so the predicate
-    /// is guarded with a null check that also translates to SQL.
-    /// </remarks>
     private static LambdaExpression BuildWildcardPredicate(
         Expression member,
         ParameterExpression parameter,
@@ -309,9 +258,6 @@ public static class QueryableExtensions
         var loweredMember = Expression.Call(member, StringToLower);
         var constant = Expression.Constant(needle, typeof(string));
 
-        // *value*  -> contains
-        // *value   -> ends with
-        // value*   -> starts with
         var method = (startsWithWildcard, endsWithWildcard) switch
         {
             (true, true) => StringContains,
@@ -321,7 +267,6 @@ public static class QueryableExtensions
 
         Expression body = Expression.Call(loweredMember, method, constant);
 
-        // Guard against NULL columns before calling LOWER() on them.
         body = Expression.AndAlso(
             Expression.NotEqual(member, Expression.Constant(null, typeof(string))),
             body);
@@ -336,17 +281,10 @@ public static class QueryableExtensions
     /// <param name="targetType">The property type, possibly nullable.</param>
     /// <param name="value">The converted value.</param>
     /// <returns><c>true</c> when the conversion succeeded; otherwise <c>false</c>.</returns>
-    /// <remarks>
-    /// Returning <c>false</c> rather than throwing means a malformed filter value is
-    /// ignored along with its term, instead of failing the whole request. Parsing
-    /// uses the invariant culture so that <c>_minTotalAmount=10.5</c> means the same
-    /// thing regardless of the server's locale.
-    /// </remarks>
     private static bool TryConvert(string rawValue, Type targetType, out object? value)
     {
         value = null;
 
-        // decimal? and DateTime? filter the same way their non-nullable forms do.
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
         try
@@ -362,8 +300,6 @@ public static class QueryableExtensions
             }
             else if (underlyingType.IsEnum)
             {
-                // Accepts the enum name, matching how enums are serialised in
-                // responses, rather than the underlying integer.
                 if (!Enum.TryParse(underlyingType, rawValue, ignoreCase: true, out var parsed)) return false;
                 value = parsed;
             }
@@ -389,8 +325,6 @@ public static class QueryableExtensions
         catch (Exception exception) when (
             exception is FormatException or InvalidCastException or OverflowException or ArgumentException)
         {
-            // An unparseable value means the caller sent something like
-            // "?_minTotalAmount=abc". The term is dropped and the rest still applies.
             return false;
         }
     }

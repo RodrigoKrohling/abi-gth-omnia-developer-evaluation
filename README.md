@@ -18,6 +18,7 @@ The original brief is preserved verbatim in [.doc/assignment.md](/.doc/assignmen
 - [Running the tests](#running-the-tests)
 - [Configuration](#configuration)
 - [Git Flow](#git-flow)
+- [AI assistance](#ai-assistance)
 - [Design decisions](#design-decisions)
 
 ---
@@ -98,7 +99,8 @@ Discounts and totals are always computed by the server. No request can supply th
 
 ## API
 
-Base path `/api/sales`. Full interactive documentation is in Swagger;
+Base path `/api/sales`. **Every route below requires a bearer token** — see
+[Authentication](#authentication). Full interactive documentation is in Swagger;
 [.doc/sales-api.md](/.doc/sales-api.md) has the request and response shapes.
 
 | Verb | Route | Purpose |
@@ -152,10 +154,70 @@ Every failure uses the shape from `.doc/general-api.md`:
 |---|---|---|
 | `ValidationError` | 400 | the request is malformed |
 | `BusinessRuleViolation` | 400 | well-formed, but a domain rule refused it |
-| `AuthenticationError` | 401 | authentication failed |
+| `AuthenticationError` | 401 | no token, or a token that is malformed, expired or signed with another key |
+| `AuthorizationError` | 403 | the token is valid but the user is not allowed — wired up, unreachable until a route requires a role |
 | `ResourceNotFound` | 404 | no such sale or item |
 | `ResourceConflict` | 409 | the sale number is already taken |
 | `InternalServerError` | 500 | a defect; details are logged, never returned |
+
+### Authentication
+
+**Every sale route requires a bearer token**, as do reading and deleting a user.
+`SalesController` and `UsersController` carry `[Authorize]`.
+
+Three routes stay open, and each has a reason:
+
+| Route | Why it is open |
+|---|---|
+| `POST /api/auth` | it issues the tokens; requiring one would be circular |
+| `POST /api/users` | registration — a token needs an account, and only this route creates one |
+| `GET /health*` | a probe that needed credentials would report the service down whenever authentication broke |
+
+Getting in:
+
+```bash
+# 1. register
+curl -X POST http://localhost:8080/api/users -H 'Content-Type: application/json' \
+  -d '{"username":"mariasilva","email":"maria@example.com","phone":"+5511999999999",
+       "password":"Str0ng!Pass1","status":"Active","role":"Customer"}'
+
+# 2. exchange credentials for a token
+curl -X POST http://localhost:8080/api/auth -H 'Content-Type: application/json' \
+  -d '{"email":"maria@example.com","password":"Str0ng!Pass1"}'
+
+# 3. send it
+curl http://localhost:8080/api/sales -H "Authorization: Bearer $TOKEN"
+```
+
+In Swagger, use the **Authorize** button and paste the raw token — the `Bearer `
+prefix is added for you. The `.http` file has a `@token` variable at the top.
+
+Tokens are valid for 8 hours and carry the user's id, username, email and role as
+claims.
+
+**Authentication only, with no role requirement.** Any valid token opens any route.
+The brief defines no authorization model for sales — no roles, no ownership, no
+statement about who may cancel whose sale — so requiring a particular role would be
+inventing a rule and then enforcing it. `UserRole` already has `Customer`, `Manager`
+and `Admin`, so narrowing later is one argument:
+`[Authorize(Roles = "Manager,Admin")]`.
+
+A rejection uses the same error body as everything else:
+
+```json
+{
+  "type": "AuthenticationError",
+  "error": "Authentication failed",
+  "detail": "This endpoint requires a bearer token. Authenticate at POST /api/auth and send the token in the Authorization header."
+}
+```
+
+This does not happen by itself. Authorization rejects a request *before* it reaches a
+controller, and does so by writing a response rather than by throwing, so
+`ExceptionHandlingMiddleware` never sees it — the default is a bare 401 with an empty
+body, which would be a second error shape in an API that documents one.
+[`AuthenticationErrorContract`](/src/Ambev.DeveloperEvaluation.WebApi/Common/AuthenticationErrorContract.cs)
+supplies the body through the bearer handler's `OnChallenge` and `OnForbidden` events.
 
 ---
 
@@ -232,6 +294,48 @@ an error:
 Publishing sits behind `IDomainEventPublisher`, which names no messaging library, so
 swapping in a real broker is a registration change.
 
+### Reading the logs
+
+Serilog writes to the console and to a daily rolling file. The path is relative to
+the content root, so `dotnet run` puts it under the WebApi project and the container
+puts it at `/app/logs`:
+
+```bash
+tail -f src/Ambev.DeveloperEvaluation.WebApi/logs/log-$(date +%Y%m%d).txt
+docker compose logs -f ambev.developerevaluation.webapi
+
+# the four sale events
+grep "Domain event published" src/Ambev.DeveloperEvaluation.WebApi/logs/log-*.txt
+```
+
+PowerShell: `Get-Content .\src\Ambev.DeveloperEvaluation.WebApi\logs\log-20260920.txt -Wait -Tail 20`
+
+The `logs/` directory is gitignored. Configuration is in code, in
+[`LoggingExtension`](/src/Ambev.DeveloperEvaluation.Common/Logging/LoggingExtension.cs) —
+there is no `Serilog` section in `appsettings.json`.
+
+Two defects in the template's logging were fixed, both of which made the log quieter
+than it should have been:
+
+- **Every Warning, Error and Fatal was discarded.** The exclusion predicate opened
+  with `if (level != Information) return true`, and Serilog's `ByExcluding` drops an
+  event when the predicate returns true. So the `LogError` calls in
+  `ExceptionHandlingMiddleware`, `MongoDomainEventStore` and
+  `CompositeDomainEventPublisher` all wrote into nothing, and the "log the failure
+  and carry on" behaviour described above was silently dropping its own diagnostics.
+  The rule now lives in
+  [`LogEventFilter`](/src/Ambev.DeveloperEvaluation.Common/Logging/LogEventFilter.cs),
+  where it is named, documented and covered by tests.
+- **No log file was written under a debugger.** The file sink sat in the `else` of
+  `if (Debugger.IsAttached)`, so pressing F5 produced console output and nothing on
+  disk. The file sink is now unconditional; only the console template still varies.
+
+The health-probe suppression the filter exists for is currently inert: it keys on
+`StatusCode` and `Path`, which only Serilog's request-logging middleware adds, and
+`UseSerilogRequestLogging()` is not wired up. The rule is kept correct so that
+enabling it is a one-line change rather than a one-line change plus a debugging
+session.
+
 ---
 
 ## Running the tests
@@ -240,14 +344,14 @@ swapping in a real broker is a registration change.
 dotnet test
 ```
 
-**243 tests, no database or container required.** The integration and functional
+**278 tests, no database or container required.** The integration and functional
 suites run against SQLite in memory, so `dotnet test` works on a clean machine.
 
 | Suite | Count | Covers |
 |---|---|---|
-| Unit | 186 | discount tiers, aggregate invariants, handlers, caching, query building, mapping configuration |
+| Unit | 204 | discount tiers, aggregate invariants, handlers, caching, query building, mapping configuration |
 | Integration | 26 | EF Core mapping, repository queries, event dispatch ordering |
-| Functional | 31 | the real HTTP pipeline end to end, for both Sales and Users/Auth |
+| Functional | 48 | the real HTTP pipeline end to end: Sales, Users/Auth, and which routes require a token |
 
 Coverage report:
 
@@ -309,9 +413,9 @@ The history is part of the deliverable. `main` holds the pristine template as it
 first commit, so everything after it is visibly the work done on top.
 
 ```
-main ─────●───────────────────────────────────────────────● v1.0.0
-          │ clean template                               ╱
-develop   └──●──●──●──●──●──●──●──●──●──●─────────────────
+main ─────●──────────────────────────────────────● v1.0.0 ────────● v1.0.1
+          │ clean template                       ╱                ╱
+develop   └──●──●──●──●──●──●──●──●──●──●───────●────────●────────
               feature branches, each merged with --no-ff
 ```
 
@@ -327,6 +431,11 @@ develop   └──●──●──●──●──●──●──●─�
 | `feature/domain-events` | event publishing and the Mongo audit trail |
 | `feature/redis-cache` | read caching |
 | `feature/documentation` | this README and the API docs |
+| `feature/fix-user-mapping-profiles` | repair the broken user and auth mapping profiles |
+
+Releases are cut on `release/*` branches and merged into both `main` and `develop`.
+`main` carries the tags: **`v1.0.0`** is the feature-complete submission, **`v1.0.1`**
+adds the mapping-profile fix.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org)
 (`feat(domain):`, `fix:`, `test:`, `docs:`, `refactor:`). Each message explains *why*
@@ -335,6 +444,30 @@ the change was made, not only what changed.
 ```bash
 git log --graph --oneline --all
 ```
+
+---
+
+## AI assistance
+
+An AI coding assistant was used throughout, as the evaluation permits.
+
+It was most useful on the mechanical half of the work: the repeated shape of the CQRS
+slices once the first one was settled, the AutoMapper profiles, the EF Core
+configuration, and the bulk of the test suite. That is the work where a generator
+saves real time and where mistakes surface immediately as a failing build or a red
+test.
+
+The parts that decide whether this submission is any good were not delegated. The
+discount tiers and the reading of the two ambiguous rules, the choice to refuse a
+duplicate product rather than merge it, storing discounts as amounts rather than
+rates, mapping value objects as complex properties, and the boundaries of the
+aggregate were all settled by hand and reviewed line by line. Where the code argues
+for a decision in a `<remarks>` block, that argument is mine and I will defend it.
+
+The `<remarks>` blocks are heavier than the template's own commenting convention.
+That is deliberate: the reasoning behind a non-obvious decision is worth more next to
+the code than in a commit message nobody will re-read. The redundancy with
+[Design decisions](#design-decisions) below is accepted for the same reason.
 
 ---
 
@@ -387,6 +520,11 @@ before the action runs, which meant a client had to understand two error shapes
 depending on whether a request failed at binding or at validation.
 `InvalidModelStateResponseFactory` maps them onto `{ type, error, detail }`.
 
+**The Sales endpoints carry no `[Authorize]`.** The brief defines no authorization
+model for sales, so leaving them open keeps the API exercisable from Swagger without
+inventing a rule the specification never stated. See
+[Authentication](#authentication) for the one-attribute change that closes it.
+
 **`User` assigns its own identity.** It previously relied on the database default
 `gen_random_uuid()`, which is PostgreSQL-only, so the Users endpoints could not run
 against any other provider and the id was unknown until after the insert. The
@@ -405,3 +543,14 @@ schema, so no migration was needed; it simply never fires.
   Every controller now constructs its result explicitly to avoid the trap, but the
   helper itself is still there to be fallen into by the next endpoint someone adds.
   Removing or renaming it would be the real fix.
+- **Anyone may register, including as `Admin`.** `POST /api/users` has to stay open
+  or no first account could exist, and it accepts whatever `role` the body asks for.
+  That is harmless while no route requires a role, and is the first thing to close
+  when one does — either seed an administrator and protect registration, or force
+  `Customer` on self-registration.
+- **Tokens cannot be revoked.** A JWT is self-contained and is not checked against
+  the users table per request, so deleting a user leaves their token working until
+  it expires (8 hours). A denylist or short-lived tokens with refresh would close it.
+- **`[Authorize]` is authentication, not authorization.** Any valid token can cancel
+  or delete any sale. See [Authentication](#authentication) for why no role model was
+  invented.

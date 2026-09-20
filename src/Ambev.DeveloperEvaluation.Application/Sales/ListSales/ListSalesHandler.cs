@@ -30,14 +30,6 @@ public class ListSalesHandler : IRequestHandler<ListSalesCommand, ListSalesResul
     /// <param name="request">The page, ordering and filters requested.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The page of sales and the total that matched.</returns>
-    /// <remarks>
-    /// There is no validator here, unlike the other handlers. Page and size are
-    /// already clamped to sane bounds by <c>PaginationQuery</c> as they are bound,
-    /// and an unrecognised filter or ordering field is dropped by
-    /// <c>QueryableExtensions</c> rather than rejected. Failing a list request
-    /// because of one unknown query parameter would be unhelpful, and there is
-    /// nothing left that could be invalid.
-    /// </remarks>
     public async Task<ListSalesResult> Handle(ListSalesCommand request, CancellationToken cancellationToken)
     {
         var (sales, totalCount) = await _saleRepository.ListAsync(

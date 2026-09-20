@@ -8,15 +8,6 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.UpdateSale;
 /// <summary>
 /// Requests that an existing sale be updated.
 /// </summary>
-/// <remarks>
-/// PUT semantics: the command carries the whole sale, so the resulting item set is
-/// exactly the one described by <see cref="Items"/>. A product currently on the sale
-/// but absent here is removed.
-///
-/// <see cref="SaleNumber"/> is absent on purpose. It identifies the sale to the
-/// business and appears on receipts already issued, so letting an update change it
-/// would rewrite history. The sale is addressed by <see cref="Id"/>.
-/// </remarks>
 public class UpdateSaleCommand : IRequest<SaleResult>
 {
     /// <summary>Gets or sets the identifier of the sale to update.</summary>

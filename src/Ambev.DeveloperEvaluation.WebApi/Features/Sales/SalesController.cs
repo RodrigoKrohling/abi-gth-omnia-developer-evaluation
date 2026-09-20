@@ -10,6 +10,7 @@ using Ambev.DeveloperEvaluation.WebApi.Common;
 using Ambev.DeveloperEvaluation.WebApi.Features.Sales.Common;
 using Ambev.DeveloperEvaluation.WebApi.Features.Sales.CreateSale;
 using Ambev.DeveloperEvaluation.WebApi.Features.Sales.UpdateSale;
+using Microsoft.AspNetCore.Authorization;
 using AutoMapper;
 using FluentValidation;
 using MediatR;
@@ -43,6 +44,14 @@ namespace Ambev.DeveloperEvaluation.WebApi.Features.Sales;
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
+// Every route below requires a valid bearer token. Obtain one from POST /api/auth
+// and send it as "Authorization: Bearer <token>".
+//
+// Authentication only, with no role requirement. The brief defines no authorization
+// model for sales - no roles, no ownership, no statement about who may cancel whose
+// sale - so requiring a specific role here would be inventing a rule and enforcing
+// it. Narrowing later is one argument: [Authorize(Roles = "Manager,Admin")].
+[Authorize]
 public class SalesController : BaseController
 {
     private readonly IMediator _mediator;

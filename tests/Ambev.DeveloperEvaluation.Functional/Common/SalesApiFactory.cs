@@ -6,6 +6,9 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Ambev.DeveloperEvaluation.Functional.Common;
 
@@ -43,6 +46,12 @@ public class SalesApiFactory : WebApplicationFactory<Program>
     {
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
+
+        // Task.Run pushes the work off whatever synchronization context the test
+        // runner is on before it is waited on. Blocking directly on the task from a
+        // captured context is the classic way to deadlock a TestServer call.
+        _token = new Lazy<string>(() =>
+            Task.Run(AcquireTokenAsync).GetAwaiter().GetResult());
     }
 
     /// <inheritdoc />
@@ -58,12 +67,9 @@ public class SalesApiFactory : WebApplicationFactory<Program>
             // Program registered DefaultContext against Npgsql. Removing the options
             // descriptor is what actually unregisters that provider - calling
             // AddDbContext again without this leaves two providers configured, and EF
-            // then throws while resolving the context.
-            //
-            // Only the generic DbContextOptions<DefaultContext> is removed. An earlier
-            // version also removed the non-generic DbContextOptions and the context
-            // itself, which broke resolution outright and made every request in the
-            // suite fail identically.
+            // then throws while resolving the context. Only the generic
+            // DbContextOptions<DefaultContext> may be removed: taking the non-generic
+            // one or the context itself breaks resolution outright.
             var descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<DefaultContext>));
 
@@ -90,6 +96,73 @@ public class SalesApiFactory : WebApplicationFactory<Program>
         context.Database.EnsureCreated();
 
         return host;
+    }
+
+    /// <summary>
+    /// A bearer token for a user registered on first use, acquired once per factory.
+    /// </summary>
+    /// <remarks>
+    /// Lazy because the host has to exist before a request can be made, and cached
+    /// because the token is valid for hours - re-registering and re-authenticating
+    /// for every test would add two round trips each and prove nothing.
+    /// </remarks>
+    private readonly Lazy<string> _token;
+
+    /// <summary>
+    /// Creates a client that carries a valid bearer token.
+    /// </summary>
+    /// <returns>An authenticated client for the in-memory API.</returns>
+    /// <remarks>
+    /// Most tests are about a feature's behaviour, not about authentication, so they
+    /// take this client and say nothing further about tokens. The tests that assert
+    /// what happens <i>without</i> a token use <see cref="WebApplicationFactory{T}.CreateClient"/>
+    /// directly.
+    /// </remarks>
+    public HttpClient CreateAuthenticatedClient()
+    {
+        var client = CreateClient();
+
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _token.Value);
+
+        return client;
+    }
+
+    /// <summary>
+    /// Registers a user and exchanges the credentials for a token.
+    /// </summary>
+    /// <remarks>
+    /// Goes through the real endpoints rather than minting a token directly or
+    /// seeding the table. If registration or authentication were to break, these
+    /// tests should fail rather than quietly carry on with a token the application
+    /// itself could never have issued.
+    /// </remarks>
+    private async Task<string> AcquireTokenAsync()
+    {
+        const string email = "functional-suite@example.com";
+        const string password = "Str0ng!Pass1";
+
+        using var client = CreateClient();
+
+        var registration = await client.PostAsJsonAsync("/api/users", new
+        {
+            username = "functionalsuite",
+            email,
+            phone = "+5511988887777",
+            password,
+            status = "Active",
+            role = "Customer"
+        });
+
+        registration.EnsureSuccessStatusCode();
+
+        var authentication = await client.PostAsJsonAsync("/api/auth", new { email, password });
+        authentication.EnsureSuccessStatusCode();
+
+        var body = await authentication.Content.ReadFromJsonAsync<JsonElement>();
+
+        return body.GetProperty("data").GetProperty("token").GetString()
+            ?? throw new InvalidOperationException("Authentication returned no token.");
     }
 
     /// <inheritdoc />

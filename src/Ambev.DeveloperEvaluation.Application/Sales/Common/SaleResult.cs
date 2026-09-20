@@ -2,29 +2,7 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.Common;
 
 /// <summary>
 /// The full state of a sale, as returned by the create, read and update use cases.
-/// </summary>
-/// <remarks>
-/// <para>
-/// One shared result type rather than a near-identical <c>CreateSaleResult</c>,
-/// <c>GetSaleResult</c> and <c>UpdateSaleResult</c>. All three answer the same
-/// question - what does this sale look like now - and splitting them would mean
-/// three copies of the same twenty fields and three AutoMapper profiles to keep in
-/// step. The template's per-use-case results exist because they genuinely differ:
-/// <c>CreateUserResult</c> carries only an id.
-/// </para>
-/// <para>
-/// Create returns the whole sale rather than just its identifier on purpose. The
-/// server calculates the discounts and the totals, so the caller cannot know them
-/// without being told, and making them fetch the sale again to find out what they
-/// were charged would be a poor API.
-/// </para>
-/// <para>
-/// This is a flat, serialization-facing shape, deliberately separate from
-/// <see cref="Ambev.DeveloperEvaluation.Domain.Entities.Sale"/>. Returning the
-/// aggregate itself would leak domain behaviour across the boundary and tie the
-/// wire format to internal refactoring.
-/// </para>
-/// </remarks>
+/// </summary
 public class SaleResult
 {
     /// <summary>Gets the sale's unique identifier.</summary>
@@ -71,12 +49,6 @@ public class SaleResult
 /// A reference to an entity owned by another domain: its identifier plus the
 /// description captured at the time of sale.
 /// </summary>
-/// <remarks>
-/// One type serves customer, branch and product because the External Identities
-/// pattern gives all three the same shape. The description is named
-/// <c>Description</c> rather than <c>Name</c> or <c>Title</c> so the single type
-/// reads correctly for each of them.
-/// </remarks>
 public class ExternalIdentityResult
 {
     /// <summary>Gets the identifier in the owning domain.</summary>
@@ -92,11 +64,6 @@ public class ExternalIdentityResult
 public class SaleItemResult
 {
     /// <summary>Gets the item's unique identifier.</summary>
-    /// <remarks>
-    /// This is the value a caller passes to
-    /// <c>PATCH /api/sales/{id}/items/{itemId}/cancel</c>. It survives an update, so
-    /// it is safe to hold on to.
-    /// </remarks>
     public Guid Id { get; set; }
 
     /// <summary>Gets the product that was sold.</summary>

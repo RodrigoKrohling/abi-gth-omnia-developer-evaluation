@@ -28,19 +28,11 @@ public static class LoggingExtension
     /// <summary>
     /// A filter predicate to exclude log events with specific criteria.
     /// </summary>
-    static readonly Func<LogEvent, bool> _filterPredicate = exclusionPredicate =>
-    {
-
-        if (exclusionPredicate.Level != LogEventLevel.Information) return true;
-
-        exclusionPredicate.Properties.TryGetValue("StatusCode", out var statusCode);
-        exclusionPredicate.Properties.TryGetValue("Path", out var path);
-
-        var excludeByStatusCode = statusCode == null || statusCode.ToString().Equals("200");
-        var excludeByPath = path?.ToString().Contains("/health") ?? false;
-
-        return excludeByStatusCode && excludeByPath;
-    };
+    /// <remarks>
+    /// The rule itself lives in <see cref="LogEventFilter"/> so that it can be read
+    /// and tested on its own. See that class for what it drops and why.
+    /// </remarks>
+    static readonly Func<LogEvent, bool> _filterPredicate = LogEventFilter.ShouldExclude;
 
     /// <summary>
     /// This method configures the logging with commonly used features for DataDog integration.
@@ -64,24 +56,31 @@ public static class LoggingExtension
                 .Enrich.WithExceptionDetails(_destructuringOptionsBuilder)
                 .Filter.ByExcluding(_filterPredicate);
 
+            // The full template, used for the file always and for the console
+            // whenever there is no debugger to keep terse for.
+            const string fullTemplate =
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}";
+
+            // Console: short and coloured under a debugger, where the IDE already
+            // shows the timestamp and the window is narrow; full otherwise.
             if (Debugger.IsAttached)
             {
-                loggerConfiguration.Enrich.WithProperty("DebuggerAttached", Debugger.IsAttached);
-                loggerConfiguration.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}", theme: SystemConsoleTheme.Colored);
+                loggerConfiguration
+                    .Enrich.WithProperty("DebuggerAttached", Debugger.IsAttached)
+                    .WriteTo.Console(
+                        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}",
+                        theme: SystemConsoleTheme.Colored);
             }
             else
             {
-                loggerConfiguration
-                    .WriteTo.Console
-                    (
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}"
-                    )
-                    .WriteTo.File(
-                        "logs/log-.txt",
-                        rollingInterval: RollingInterval.Day,
-                        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}"
-                    );
+                loggerConfiguration.WriteTo.Console(outputTemplate: fullTemplate);
             }
+
+            // File: unconditional, so a run under a debugger still leaves a record.
+            loggerConfiguration.WriteTo.File(
+                "logs/log-.txt",
+                rollingInterval: RollingInterval.Day,
+                outputTemplate: fullTemplate);
         });
 
         builder.Services.AddLogging();

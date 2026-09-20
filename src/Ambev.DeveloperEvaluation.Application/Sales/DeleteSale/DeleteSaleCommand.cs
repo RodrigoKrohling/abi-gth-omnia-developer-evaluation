@@ -7,13 +7,6 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.DeleteSale;
 /// Requests that a sale be permanently removed.
 /// </summary>
 /// <param name="Id">The identifier of the sale to delete.</param>
-/// <remarks>
-/// Distinct from cancelling. Cancelling is the business operation that voids a sale
-/// while keeping the record for audit; deleting erases the row and its items
-/// entirely and exists to satisfy the CRUD contract the brief asks for. In a real
-/// deployment this endpoint would very likely be restricted or removed in favour of
-/// cancellation.
-/// </remarks>
 public record DeleteSaleCommand(Guid Id) : IRequest<DeleteSaleResult>;
 
 /// <summary>

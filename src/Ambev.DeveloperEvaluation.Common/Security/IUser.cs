@@ -18,6 +18,13 @@
         public string Username { get; }
 
         /// <summary>
+        /// Obtém o endereço de e-mail do usuário.
+        /// </summary>
+        /// <returns>O e-mail do usuário.</returns>
+        /// <remarks>Written into the token as the Email claim, which BaseController reads.</remarks>
+        public string Email { get; }
+
+        /// <summary>
         /// Obtém o papel/função do usuário no sistema.
         /// </summary>
         /// <returns>O papel do usuário como uma string.</returns>

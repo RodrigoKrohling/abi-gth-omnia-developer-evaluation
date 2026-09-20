@@ -73,6 +73,12 @@ public class User : BaseEntity, IUser
     string IUser.Username => Username;
 
     /// <summary>
+    /// Gets the user's email address.
+    /// </summary>
+    /// <returns>The user's email address.</returns>
+    string IUser.Email => Email;
+
+    /// <summary>
     /// Gets the user's role in the system.
     /// </summary>
     /// <returns>The user's role as a string.</returns>
@@ -83,11 +89,8 @@ public class User : BaseEntity, IUser
     /// </summary>
     public User()
     {
-        // The entity owns its identity from construction, matching the Sale
-        // aggregate. It previously relied on the database to generate the key with
-        // gen_random_uuid(), which is a PostgreSQL function: the same code could not
-        // run against any other provider, and the id was unknown until after the
-        // insert.
+        // The entity owns its identity from construction, matching Sale, so the id is
+        // known before the insert and does not depend on a provider-specific default.
         Id = Guid.NewGuid();
         CreatedAt = DateTime.UtcNow;
     }

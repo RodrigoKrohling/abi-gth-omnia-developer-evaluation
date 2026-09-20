@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AutoMapper;
 using FluentValidation;
@@ -17,6 +18,9 @@ namespace Ambev.DeveloperEvaluation.WebApi.Features.Users;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+// Reading and deleting a user requires a token. Creating one does not - see the
+// [AllowAnonymous] on CreateUser below.
+[Authorize]
 public class UsersController : BaseController
 {
     private readonly IMediator _mediator;
@@ -40,6 +44,16 @@ public class UsersController : BaseController
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The created user details</returns>
     [HttpPost]
+    // Registration has to be reachable without a token, or the API would be sealed
+    // shut: every other route needs a token, a token comes from POST /api/auth, and
+    // that needs an account that only this route can create. Requiring a token here
+    // would mean no first account could ever exist.
+    //
+    // The cost is that anyone may register, including with Role = Admin. That is
+    // harmless while no endpoint requires a role, and is the first thing to close
+    // when one does - either by seeding an administrator and removing this
+    // attribute, or by forcing the role to Customer on self-registration.
+    [AllowAnonymous]
     [ProducesResponseType(typeof(ApiResponseWithData<CreateUserResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request, CancellationToken cancellationToken)

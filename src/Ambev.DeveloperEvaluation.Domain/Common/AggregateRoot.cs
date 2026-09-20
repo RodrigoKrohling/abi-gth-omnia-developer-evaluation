@@ -6,23 +6,6 @@ namespace Ambev.DeveloperEvaluation.Domain.Common;
 /// Base class for the entity that owns a consistency boundary and records the
 /// domain events raised inside it.
 /// </summary>
-/// <remarks>
-/// An aggregate root is the only entity in its cluster that the outside world may
-/// hold a reference to. For the sale cluster that is <see cref="Entities.Sale"/>:
-/// nothing outside loads or modifies a <see cref="Entities.SaleItem"/> directly,
-/// which is what lets the sale guarantee rules that span several items, such as the
-/// twenty-item cap and the recalculated total.
-///
-/// This type extends <see cref="BaseEntity"/> rather than changing it, because
-/// <c>User</c> already derives from <see cref="BaseEntity"/> and has no need of
-/// domain events. Adding the event list there would have imposed it on every
-/// entity in the system.
-///
-/// Events are accumulated in memory and deliberately not published as they are
-/// raised. The infrastructure drains them after <c>SaveChangesAsync</c> succeeds,
-/// so an operation that fails and rolls back never announces a change that was
-/// not persisted.
-/// </remarks>
 public abstract class AggregateRoot : BaseEntity
 {
     /// <summary>

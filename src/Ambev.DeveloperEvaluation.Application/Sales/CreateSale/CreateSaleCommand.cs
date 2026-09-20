@@ -6,20 +6,6 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
 /// <summary>
 /// Requests that a new sale be registered.
 /// </summary>
-/// <remarks>
-/// The external identities arrive as flat pairs - <c>CustomerId</c> plus
-/// <c>CustomerName</c> - rather than as the domain's value objects. A command is a
-/// transport shape that has to survive JSON deserialization, and
-/// <see cref="Ambev.DeveloperEvaluation.Domain.ValueObjects.CustomerReference"/>
-/// refuses to exist with an empty id. Binding straight onto it would turn a
-/// malformed request into a deserialization crash instead of a 400 naming the
-/// offending field. The handler builds the value objects once the command has been
-/// validated.
-///
-/// Notably absent: discounts and totals. They are calculated by the domain from the
-/// quantities, never supplied by the caller, so there is nowhere for a client to
-/// assert its own price.
-/// </remarks>
 public class CreateSaleCommand : IRequest<SaleResult>
 {
     /// <summary>Gets or sets the business-facing sale number.</summary>

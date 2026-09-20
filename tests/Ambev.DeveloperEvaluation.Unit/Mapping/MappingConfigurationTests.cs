@@ -17,19 +17,10 @@ namespace Ambev.DeveloperEvaluation.Unit.Mapping;
 /// Contains tests for the application's complete AutoMapper configuration.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Every other test that needs a mapper builds one from a single profile, which
-/// proves that profile works in isolation and nothing about the configuration the
-/// application actually runs. These tests build the same configuration
-/// <c>Program.cs</c> does - both assemblies scanned together - and check it as a
-/// whole.
-/// </para>
-/// <para>
-/// This is the guard that was missing. A mapping declared in the wrong direction
-/// compiles, passes every unit test that does not exercise it, and fails only when a
-/// real request hits that endpoint. <see cref="IMapper.ConfigurationProvider"/>'s
-/// validation turns that into a build-time failure instead.
-/// </para>
+/// Builds the same configuration <c>Program.cs</c> does - both assemblies scanned
+/// together - and validates it as a whole. A map declared in the wrong direction is
+/// valid configuration and fails only on a real request, so the direction of each
+/// map is also exercised here rather than just its validity.
 /// </remarks>
 public class MappingConfigurationTests
 {
@@ -65,9 +56,7 @@ public class MappingConfigurationTests
     [Fact(DisplayName = "GetUserResult should map to GetUserResponse")]
     public void Given_GetUserResult_When_Mapped_Then_ProducesResponse()
     {
-        // UsersController.GetUser does _mapper.Map<GetUserResponse>(response), where
-        // response is a GetUserResult. The profile previously declared only the
-        // reverse direction, so this endpoint failed at runtime.
+        // UsersController.GetUser maps in this direction; the reverse is never used.
         var mapper = CreateApplicationMapper();
 
         var result = new GetUserResult
@@ -93,11 +82,8 @@ public class MappingConfigurationTests
     [Fact(DisplayName = "AuthenticateUserResult should map to AuthenticateUserResponse")]
     public void Given_AuthenticateUserResult_When_Mapped_Then_ProducesResponse()
     {
-        // AuthController.AuthenticateUser does
-        // _mapper.Map<AuthenticateUserResponse>(response), where response is an
-        // AuthenticateUserResult. The profile previously mapped from the User entity
-        // instead, and additionally ignored Token - which is the one field the
-        // endpoint exists to return.
+        // AuthController maps the result, not the User entity, and Token is the one
+        // field the endpoint exists to return.
         var mapper = CreateApplicationMapper();
 
         var result = new AuthenticateUserResult

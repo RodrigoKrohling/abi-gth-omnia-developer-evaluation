@@ -34,7 +34,6 @@ public static class CachingExtension
 
         if (!settings.Enabled || string.IsNullOrWhiteSpace(settings.ConnectionString))
         {
-            // The Null Object: callers never branch on whether a cache exists.
             builder.Services.AddSingleton<ICacheService, NullCacheService>();
             return;
         }

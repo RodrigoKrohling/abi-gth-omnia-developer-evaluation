@@ -6,17 +6,6 @@ namespace Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
 /// <summary>
 /// Validates a <see cref="CreateSaleCommand"/>.
 /// </summary>
-/// <remarks>
-/// This checks that the request is well-formed; the domain decides whether the
-/// operation is permitted. The two overlap on quantity, and deliberately so: the
-/// validator reports every bad quantity in the request at once, with the offending
-/// item's index, while the domain refuses the first one it meets. A caller sending
-/// four bad lines should be told about all four rather than discovering them one
-/// request at a time.
-///
-/// The bounds are taken from <see cref="QuantityTierDiscountPolicy"/> rather than
-/// hard-coded, so the validator cannot drift out of step with the rules it mirrors.
-/// </remarks>
 public class CreateSaleCommandValidator : AbstractValidator<CreateSaleCommand>
 {
     /// <summary>
@@ -48,8 +37,6 @@ public class CreateSaleCommandValidator : AbstractValidator<CreateSaleCommand>
         RuleFor(c => c.Items)
             .NotEmpty().WithMessage("A sale must have at least one item.");
 
-        // Reported here rather than left to the aggregate so the caller learns which
-        // product was repeated, instead of only that something was.
         RuleFor(c => c.Items)
             .Must(items => items.Select(i => i.ProductId).Distinct().Count() == items.Count)
             .WithMessage("A product may appear only once in a sale. Combine the quantities into a single item.")

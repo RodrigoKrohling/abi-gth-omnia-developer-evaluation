@@ -171,10 +171,8 @@ public class DefaultContextFactory : IDesignTimeDbContextFactory<DefaultContext>
 
         builder.UseNpgsql(
                connectionString,
-               // The migrations live in this project (Migrations/), so the design-time
-               // factory must name this assembly. It previously named the WebApi
-               // assembly, which disagreed with the runtime registration in Program.cs
-               // and made the EF tooling unable to find the existing migrations.
+               // Migrations live in this project, and this must match the runtime
+               // registration in Program.cs or the tooling will not find them.
                b => b.MigrationsAssembly("Ambev.DeveloperEvaluation.ORM")
         );
 

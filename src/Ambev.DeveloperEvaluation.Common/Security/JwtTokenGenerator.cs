@@ -54,6 +54,8 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         {
            new Claim(ClaimTypes.NameIdentifier, user.Id),
            new Claim(ClaimTypes.Name, user.Username),
+           // Read back by BaseController.GetCurrentUserEmail.
+           new Claim(ClaimTypes.Email, user.Email),
            new Claim(ClaimTypes.Role, user.Role)
        };
 

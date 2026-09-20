@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AutoMapper;
 using FluentValidation;
@@ -13,6 +14,11 @@ namespace Ambev.DeveloperEvaluation.WebApi.Features.Auth;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+// Stated explicitly rather than left implicit. This is the route that issues tokens,
+// so it can never require one; saying so in the code keeps a future blanket
+// [Authorize] - applied at the class, or as a global fallback policy - from locking
+// the whole API out of itself.
+[AllowAnonymous]
 public class AuthController : BaseController
 {
     private readonly IMediator _mediator;
